@@ -1,10 +1,17 @@
 # Legal Loves Tech Hackathon 2026
+
 Team `Recht Technisch`'s pilot project at Legal Loves Tech Hackathon 2026
 
-Team members:
+**Team members**
 - Leo Yesaulov
 - Daniel B
 - ...
 - Michael Kornilich
 
-Google Cloud Project: https://console.cloud.google.com/welcome?project=recht-technisch
+**Design decisions**
+- There will be no stage / test / local environment. Everything will run in prod to reduce development compexity.
+
+
+**References**
+- [Google Cloud Project](https://console.cloud.google.com/welcome?project=recht-technisch)
+
