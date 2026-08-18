@@ -1,6 +1,8 @@
 FROM python:latest
 WORKDIR /api
-COPY . .
-RUN pip install -r requirements.txt
+RUN curl -sSL https://install.python-poetry.org | python3 -
 EXPOSE 8080
-CMD python main.py
+COPY . .
+# TODO: maybe add to .bashrc
+RUN ~/.local/share/pypoetry/venv/bin/poetry install
+CMD ["poetry", "run", "python", "main.py"]
