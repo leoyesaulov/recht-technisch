@@ -6,3 +6,5 @@ Team members:
 - Daniel B
 - ...
 - Michael Kornilich
+
+Google Cloud Project: https://console.cloud.google.com/welcome?project=recht-technisch
