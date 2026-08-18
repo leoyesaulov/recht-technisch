@@ -1,6 +1,7 @@
 FROM python:latest
 WORKDIR /api
 COPY . .
-RUN pip install -r requirements.txt
+RUN curl -sSL https://install.python-poetry.org | python3 - &&\
+    poetry install
 EXPOSE 8080
-CMD python main.py
+CMD poetry run python main.py
