@@ -7,7 +7,7 @@ services:
   app:
     build: app/
     environment:
-      BACKEND_URL: http://api:8080
+      BACKEND_URL: https://recht-technisch-backend-339540402730.europe-west1.run.app
       PORT: 3000
     ports:
       - "3000:3000"
