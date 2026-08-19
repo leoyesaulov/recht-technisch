@@ -15,8 +15,8 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DIST_DIR = path.join(__dirname, "dist");
 
-const PORT = process.env.PORT || 8080;
-const BACKEND_URL = process.env.BACKEND_URL;
+const PORT = 80;
+const BACKEND_URL = "https://recht-technisch-backend-339540402730.europe-west1.run.app";
 
 if (!BACKEND_URL) {
   console.error(
