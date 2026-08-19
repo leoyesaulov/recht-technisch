@@ -1,6 +1,5 @@
 # Dashboard API contract
 
-Status: proposed
 
 The dashboard reads three independent categories. The API returns the complete
 available data set and stable IDs; the frontend owns layout and trims older
@@ -108,28 +107,25 @@ The response contains exactly three recommendations: one each for `political`,
 ```json
 [
   {
-    "id": "political-1",
-    "category": "political",
+    "id": "political",
     "text": "Advocate for mandatory delivery SLA legislation",
     "detail": "Push for clearer delivery commitments."
   },
   {
-    "id": "focus-1",
-    "category": "focus",
+    "id": "focus",
     "text": "Prioritize delivery complaints in consumer advice",
     "detail": "..."
   },
   {
-    "id": "user-warning-1",
-    "category": "user_warning",
+    "id": "user_warning",
     "text": "Warn users about delayed deliveries",
     "detail": "..."
   }
 ]
 ```
 
-`category` is one of `political`, `focus`, or `user_warning`. `text` and
-`detail` are generated content, not UI labels. Each category occurs once.
+`id` is one of `political`, `focus`, or `user_warning`; each occurs exactly
+once. `text` and `detail` are generated content, not UI labels.
 
 ## Errors
 

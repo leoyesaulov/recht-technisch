@@ -22,9 +22,10 @@ export type Cluster = {
   count: number;
 };
 
+export type RecommendationId = "political" | "focus" | "user_warning";
+
 export type Recommendation = {
-  id: string;
-  category: "political" | "focus" | "user_warning";
+  id: RecommendationId;
   text: string;
   detail: string;
 };

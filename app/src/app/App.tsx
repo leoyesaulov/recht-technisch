@@ -133,7 +133,7 @@ export default function App() {
   const peakItem = monthlyData.reduce((peak, item) => item.complaints > peak.complaints ? item : peak, { month: "—", complaints: 0 });
   const recommendations = useMemo(() => {
     return (recommendationItems ?? []).map((recommendation) => {
-      const config = recommendationGroups[recommendation.category];
+      const config = recommendationGroups[recommendation.id];
       return { ...recommendation, dimensionLabel: config.label, Icon: config.Icon, accentColor: config.color, accentBg: config.bg };
     });
   }, [recommendationItems]);
