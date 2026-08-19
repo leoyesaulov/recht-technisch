@@ -8,8 +8,13 @@ Team `Recht Technisch`'s pilot project at Legal Loves Tech Hackathon 2026
 - Timon G
 - Michael K
 
-## Design decisions
+## Design
 - There will be no stage / test / local environment. Everything will run in prod to reduce development compexity.
+
+### Architecture
+* Google Firestore
+* Google Vertex AI (gemini-embedding-001)
+* Google Vertex AI Agent Engine
 
 ## Run
 
