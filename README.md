@@ -3,13 +3,18 @@
 Team `Recht Technisch`'s pilot project at Legal Loves Tech Hackathon 2026
 
 ## Team members
-- Leo Yesaulov
+- Leo Y
 - Daniel B
 - Timon G
-- Michael Kornilich
+- Michael K
 
-## Design decisions
+## Design
 - There will be no stage / test / local environment. Everything will run in prod to reduce development compexity.
+
+### Architecture
+* Google Firestore
+* Google Vertex AI (gemini-embedding-001)
+* Google Vertex AI Agent Engine
 
 ## Run
 
@@ -25,4 +30,6 @@ Dependency installation is required to run the project.
 
 ## References
 - [Google Cloud Project](https://console.cloud.google.com/welcome?project=recht-technisch)
+- [Webpage](recht.omniserv.me)
 - [Backend URL](https://recht-technisch-backend-339540402730.europe-west1.run.app/)
+- [Challenge page](https://legallovestech.vercel.app/#:~:text=Recht%20Technisch,IV\)%20(PDF))
