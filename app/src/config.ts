@@ -1,4 +1,4 @@
-const backendUrl = import.meta.env.VITE_BACKEND_URL ??
-  "https://recht-technisch-backend-339540402730.europe-west1.run.app";
-
-export const API_BASE_URL = `${backendUrl.replace(/\/$/, "")}/`;
+// The browser never talks to the backend directly — it only ever calls this
+// same-origin path, which app/server.js proxies to the real backend after
+// attaching a Google-signed ID token (see server.js for details).
+export const API_BASE_URL = "/api";

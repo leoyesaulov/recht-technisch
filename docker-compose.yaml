@@ -8,6 +8,10 @@ services:
     build: app/
     environment:
       BACKEND_URL: https://recht-technisch-backend-339540402730.europe-west1.run.app
-      PORT: 3000
+      # PORT is intentionally left unset so the server defaults to 8080,
+      # matching Cloud Run's own convention. To proxy real requests locally,
+      # the container also needs Application Default Credentials, e.g. by
+      # mounting `~/.config/gcloud` after `gcloud auth application-default
+      # login` on the host — see README.md.
     ports:
-      - "3000:3000"
+      - "3000:8080"
