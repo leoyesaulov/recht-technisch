@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AreaChart,
   Area,
@@ -22,6 +22,8 @@ import {
   Search,
   Megaphone,
 } from "lucide-react";
+import { getDashboard } from "./api";
+import type { Dashboard, DashboardElement } from "./api";
 
 // ── Palette ───────────────────────────────────────────────────────────────────
 const RED      = "#C8102E";
@@ -35,150 +37,18 @@ const FDISPLAY = "'Barlow Condensed', sans-serif";
 const FBODY    = "'Inter', sans-serif";
 const FMONO    = "'DM Mono', monospace";
 
-// ── Data ──────────────────────────────────────────────────────────────────────
-const monthlyData = [
-  { month: "Jan",  complaints: 112 },
-  { month: "Feb",  complaints: 138 },
-  { month: "Mar",  complaints: 159 },
-  { month: "Apr",  complaints: 143 },
-  { month: "May",  complaints: 187 },
-  { month: "Jun",  complaints: 221 },
-  { month: "Jul",  complaints: 264 },
-  { month: "Aug",  complaints: 298 },
-  { month: "Sep",  complaints: 276 },
-  { month: "Oct",  complaints: 312 },
-  { month: "Nov",  complaints: 337 },
-  { month: "Dec",  complaints: 289 },
-];
-
-const severity = [
-  { label: "Critical", pct: 18, color: RED },
-  { label: "High",     pct: 32, color: "#E8432D" },
-  { label: "Medium",   pct: 35, color: "#C4973A" },
-  { label: "Low",      pct: 15, color: "#C8C4BC" },
-];
-
-const channelData = [
-  { name: "Online",   value: 64 },
-  { name: "In-person", value: 36 },
-];
 const CHANNEL_COLORS = [RED, "#D0CDC8"];
+const SEVERITY_COLORS = [RED, "#E8432D", "#C4973A", "#C8C4BC"];
 
-const retailers = [
-  { name: "RetailCo",  value: 31 },
-  { name: "ShopMart",  value: 24 },
-  { name: "QuickBuy",  value: 19 },
-  { name: "MegaStore", value: 14 },
-  { name: "Others",    value: 12 },
-];
+const icons = { delivery: Clock, product: ShoppingCart, service: Headphones, billing: CreditCard, app: Smartphone, return: RotateCcw };
 
-const clusters = [
-  {
-    id: 1, title: "Delivery Delays", Icon: Clock,
-    quote: "My package hasn't arrived after 2 weeks. The tracking just says 'in transit' — zero updates from the carrier whatsoever.",
-    count: 247, delta: "+34%", rising: true,
-  },
-  {
-    id: 2, title: "Product Quality", Icon: ShoppingCart,
-    quote: "Item arrived broken and the outer packaging was crushed. This is the second time this has happened with the same retailer.",
-    count: 183, delta: "+12%", rising: true,
-  },
-  {
-    id: 3, title: "Customer Service", Icon: Headphones,
-    quote: "Waited 45 minutes on hold, got disconnected, then had to start the entire process over again from scratch.",
-    count: 156, delta: "–8%", rising: false,
-  },
-  {
-    id: 4, title: "Billing Issues", Icon: CreditCard,
-    quote: "I was charged twice for the same order. It has been 10 days since I reported it and still no refund has been processed.",
-    count: 134, delta: "+21%", rising: true,
-  },
-  {
-    id: 5, title: "App / Web Bugs", Icon: Smartphone,
-    quote: "The checkout screen crashes every single time I try to complete a purchase. This is on both mobile and desktop.",
-    count: 98, delta: "+67%", rising: true,
-  },
-  {
-    id: 6, title: "Return Process", Icon: RotateCcw,
-    quote: "The return shipping label won't scan and the store associate flat out refused to accept my item at the counter.",
-    count: 87, delta: "–3%", rising: false,
-  },
-];
+function elementOf(elements: DashboardElement[], id: string) {
+  return elements.find((element) => element.id === id);
+}
 
-const recommendations = [
-  {
-    dimension: "Political",
-    dimensionLabel: "POLITICAL ACTION",
-    Icon: Landmark,
-    accentColor: RED,
-    accentBg: "rgba(200,16,46,0.07)",
-    items: [
-      {
-        title: "Advocate for mandatory delivery SLA legislation",
-        detail:
-          "Push for a Bavarian initiative at Bundesrat level requiring online retailers to compensate consumers for missed delivery windows — mirroring the EU Air Passenger Rights model.",
-      },
-      {
-        title: "Tighten pre-contractual information rules for e-commerce",
-        detail:
-          "247 WISMO complaints suggest retailers are misrepresenting delivery times at checkout. Lobby for stricter enforcement of §312j BGB across Bavarian-domiciled platforms.",
-      },
-      {
-        title: "Support EU Digital Fairness Act implementation",
-        detail:
-          "Accelerate Bavaria's transposition of dark-pattern prohibitions. App and checkout complaints surged 67% — current self-regulation has failed.",
-      },
-    ],
-  },
-  {
-    dimension: "Audit",
-    dimensionLabel: "VERBRAUCHERZENTRALE FOCUS",
-    Icon: Search,
-    accentColor: INK,
-    accentBg: "rgba(26,26,26,0.06)",
-    items: [
-      {
-        title: "Audit delivery-time claims of RetailCo & ShopMart",
-        detail:
-          "31% and 24% of complaints originate here. Mystery-shop advertised vs. actual delivery windows and cross-reference carrier data — likely grounds for misleading advertising proceedings.",
-      },
-      {
-        title: "Investigate double-billing patterns in payment processors",
-        detail:
-          "134 duplicate-charge reports cluster around Nov 12–15. Request transaction logs under §675f BGB. A systemic processor fault may enable a collective enforcement action.",
-      },
-      {
-        title: "Test mobile checkout flows for dark patterns",
-        detail:
-          "App/web crash complaints rose 67%. Conduct structured UX audits on checkout and cancellation flows of top offending retailers using the DETOUR framework.",
-      },
-    ],
-  },
-  {
-    dimension: "Campaign",
-    dimensionLabel: "PUBLIC AWARENESS CAMPAIGN",
-    Icon: Megaphone,
-    accentColor: "#7A5C1E",
-    accentBg: "rgba(196,151,58,0.09)",
-    items: [
-      {
-        title: "\"Meine Rechte beim Online-Kauf\" guide",
-        detail:
-          "Produce and distribute a plain-language consumer guide covering delivery rights, return procedures, and billing disputes — targeted at Bavarian shoppers via media partners and Bürgerbüros.",
-      },
-      {
-        title: "Launch a structured complaint portal for Bavaria",
-        detail:
-          "Current complaint data is sparse relative to likely incident volume. A dedicated Bavarian portal improves data density and creates a replicable evidence base for enforcement.",
-      },
-      {
-        title: "\"Checkout mit Köpfchen\" digital literacy campaign",
-        detail:
-          "67% spike in app/checkout complaints signals low consumer awareness of dark patterns. Partner with Bavarian schools and VHS networks for digital consumer literacy modules.",
-      },
-    ],
-  },
-];
+function monthLabel(value: string) {
+  return value.includes("-") ? new Date(`${value}-01T00:00:00Z`).toLocaleDateString("en", { month: "short", timeZone: "UTC" }) : value;
+}
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 function SectionLabel({ children }: { children: string }) {
@@ -221,8 +91,46 @@ function CustomTooltip({ active, payload, label }: any) {
 // ── Main component ────────────────────────────────────────────────────────────
 export default function App() {
   const [hovered, setHovered] = useState<number | null>(null);
-  const totalYear = monthlyData.reduce((s, d) => s + d.complaints, 0);
-  const peak = Math.max(...monthlyData.map((d) => d.complaints));
+  const [dashboard, setDashboard] = useState<Dashboard | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    getDashboard(controller.signal)
+      .then(setDashboard)
+      .catch((requestError) => {
+        if (requestError.name !== "AbortError") setError(requestError.message);
+      });
+    return () => controller.abort();
+  }, []);
+
+  const elements = dashboard?.elements ?? [];
+  const monthlyElement = elementOf(elements, "monthly-volume");
+  const severityElement = elementOf(elements, "severity");
+  const channelElement = elementOf(elements, "channels");
+  const retailerElement = elementOf(elements, "top-retailers");
+  const recommendationsElement = elementOf(elements, "recommendations");
+  const monthlyData = (monthlyElement?.items ?? []).map((item) => ({ month: monthLabel(item.label ?? ""), complaints: item.value ?? 0 }));
+  const severity = (severityElement?.items ?? []).map((item, index) => ({ label: item.label ?? item.id ?? "", pct: item.percentage ?? 0, color: SEVERITY_COLORS[index % SEVERITY_COLORS.length] }));
+  const channelData = (channelElement?.items ?? []).map((item) => ({ name: item.label ?? item.id ?? "", value: item.percentage ?? 0 }));
+  const retailers = (retailerElement?.items ?? []).map((item) => ({ name: item.label ?? item.id ?? "", value: item.percentage ?? 0 }));
+  const clusters = elements.filter((element) => element.type === "cluster");
+  const totalYear = elementOf(elements, "total-complaints")?.value ?? monthlyData.reduce((sum, item) => sum + item.complaints, 0);
+  const peakItem = monthlyData.reduce((peak, item) => item.complaints > peak.complaints ? item : peak, { month: "—", complaints: 0 });
+  const recommendations = useMemo(() => {
+    const items = recommendationsElement?.items ?? [];
+    return ["political", "audit", "campaign"].map((dimension) => {
+      const config = {
+        political: { label: "POLITICAL ACTION", Icon: Landmark, color: RED, bg: "rgba(200,16,46,0.07)" },
+        audit: { label: "VERBRAUCHERZENTRALE FOCUS", Icon: Search, color: INK, bg: "rgba(26,26,26,0.06)" },
+        campaign: { label: "PUBLIC AWARENESS CAMPAIGN", Icon: Megaphone, color: "#7A5C1E", bg: "rgba(196,151,58,0.09)" },
+      }[dimension];
+      return { dimension, dimensionLabel: config.label, Icon: config.Icon, accentColor: config.color, accentBg: config.bg, items: items.filter((item) => item.category === dimension).map((item) => ({ title: item.title ?? item.label ?? "", detail: item.detail ?? "" })) };
+    }).filter((group) => group.items.length > 0);
+  }, [recommendationsElement]);
+
+  if (!dashboard && !error) return <div style={{ padding: 40, fontFamily: FBODY, color: INK }}>Loading dashboard…</div>;
+  if (error) return <div style={{ padding: 40, fontFamily: FBODY, color: RED }}>Could not load dashboard: {error}</div>;
 
   return (
     <div
@@ -278,7 +186,7 @@ export default function App() {
               marginLeft: "4px",
             }}
           >
-            · COMPLAINT INTELLIGENCE 2024
+            · {dashboard.title.toUpperCase()}
           </span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "24px" }}>
@@ -340,10 +248,10 @@ export default function App() {
                 marginBottom: "10px",
               }}
             >
-              <SectionLabel>MONTHLY COMPLAINT VOLUME · 2024</SectionLabel>
+              <SectionLabel>MONTHLY COMPLAINT VOLUME · {dashboard.period.to.slice(0, 4)}</SectionLabel>
               <div style={{ display: "flex", gap: "16px" }}>
                 <span style={{ fontFamily: FMONO, fontSize: "11px", color: MUTED_TX }}>
-                  Peak: <span style={{ color: RED }}>{peak}</span> (Oct)
+                  Peak: <span style={{ color: RED }}>{peakItem.complaints}</span> ({peakItem.month})
                 </span>
                 <span style={{ fontFamily: FMONO, fontSize: "11px", color: MUTED_TX }}>
                   Total: <span style={{ color: INK, fontWeight: 500 }}>{totalYear.toLocaleString()}</span>
@@ -598,7 +506,7 @@ export default function App() {
             >
               COMPLAINT CLUSTERS
             </h2>
-            <SectionLabel>SECTION 2 OF 3 · 6 ACTIVE CLUSTERS</SectionLabel>
+            <SectionLabel>SECTION 2 OF 3 · {clusters.length} ACTIVE CLUSTERS</SectionLabel>
           </div>
           <span
             style={{
@@ -619,13 +527,15 @@ export default function App() {
             gap: "16px",
           }}
         >
-          {clusters.map((c) => {
-            const isHov = hovered === c.id;
+          {clusters.map((c, index) => {
+            const isHov = hovered === index;
+            const ClusterIcon = icons[c.icon as keyof typeof icons] ?? Clock;
+            const rising = c.trend === "rising";
             return (
               <div
                 key={c.id}
                 style={{ position: "relative" }}
-                onMouseEnter={() => setHovered(c.id)}
+                onMouseEnter={() => setHovered(index)}
                 onMouseLeave={() => setHovered(null)}
               >
                 {/* Tooltip */}
@@ -651,7 +561,7 @@ export default function App() {
                         whiteSpace: "nowrap",
                       }}
                     >
-                      {c.count.toLocaleString()} complaints in this cluster
+                      {(c.count ?? 0).toLocaleString()} complaints in this cluster
                     </div>
                     <div
                       style={{
@@ -693,7 +603,7 @@ export default function App() {
                     }}
                   >
                     <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                      <c.Icon size={13} color={RED} />
+                      <ClusterIcon size={13} color={RED} />
                       <span
                         style={{
                           fontFamily: FDISPLAY,
@@ -710,10 +620,10 @@ export default function App() {
                       style={{
                         fontFamily: FMONO,
                         fontSize: "10px",
-                        color: c.rising ? RED : MUTED_TX,
+                        color: rising ? RED : MUTED_TX,
                       }}
                     >
-                      {c.delta}
+                      {c.change_percentage === undefined ? "—" : `${c.change_percentage > 0 ? "+" : ""}${c.change_percentage}%`}
                     </span>
                   </div>
 
@@ -729,7 +639,7 @@ export default function App() {
                       flex: 1,
                     }}
                   >
-                    "{c.quote}"
+                    "{c.quote ?? "No representative quote available."}"
                   </p>
 
                   {/* Footer */}
@@ -748,7 +658,7 @@ export default function App() {
                     >
                       Representative sample
                     </span>
-                    {c.rising && (
+                    {rising && (
                       <div
                         style={{
                           background: "rgba(200,16,46,0.08)",
@@ -804,7 +714,7 @@ export default function App() {
           >
             ACTIONABLE RECOMMENDATIONS
           </h2>
-          <SectionLabel>SECTION 3 OF 3 · AI-GENERATED · 3 DIMENSIONS</SectionLabel>
+          <SectionLabel>SECTION 3 OF 3 · AI-GENERATED · {recommendations.length} DIMENSIONS</SectionLabel>
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "20px" }}>
@@ -916,7 +826,7 @@ export default function App() {
           VERBRAUCHERZENTRALE BAYERN · COMPLAINT ANALYTICS
         </span>
         <span style={{ fontFamily: FMONO, fontSize: "10px", color: MUTED_TX }}>
-          Data period: Jan – Dec 2024 · Generated by AI agent
+          Data period: {dashboard.period.from} – {dashboard.period.to} · Updated {new Date(dashboard.updated_at).toLocaleString()}
         </span>
       </footer>
     </div>

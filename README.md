@@ -27,6 +27,9 @@ Dependency installation is required to run the project.
 ### API
 `poetry run python main.py`
 
+### Frontend
+- cd to `app/`
+- `docker build -t complaints-dashboard . && docker run --rm -p 8080:80 complaints-dashboard`
 
 ## References
 - [Google Cloud Project](https://console.cloud.google.com/welcome?project=recht-technisch)
