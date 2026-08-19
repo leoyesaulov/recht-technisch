@@ -7,7 +7,7 @@ stable IDs; the frontend owns all headings, labels, icons, and layout.
 
 ## Rules
 
-- Base URL: the deployed backend URL followed by `/api`.
+- Base URL: the deployed backend URL, without a path suffix or trailing slash.
 - Requests and responses use JSON.
 - Dates use `YYYY-MM-DD`; timestamps use ISO 8601.
 - IDs are stable strings. The frontend maps IDs to display text.
@@ -16,7 +16,15 @@ stable IDs; the frontend owns all headings, labels, icons, and layout.
 
 ## 1. Descriptive statistics
 
-### `GET /api/descriptive-stats`
+### `GET /descriptive-stats`
+
+FastAPI route:
+
+```python
+@app.get("/descriptive-stats")
+def descriptive_stats():
+    ...
+```
 
 Optional query parameters: `from` and `to`. If omitted, the backend chooses
 the latest available complete period.
@@ -50,7 +58,15 @@ because of rounding.
 
 ## 2. Complaint clusters
 
-### `GET /api/clusters`
+### `GET /clusters`
+
+FastAPI route:
+
+```python
+@app.get("/clusters")
+def clusters():
+    ...
+```
 
 Uses the same optional `from` and `to` query parameters. The response is a
 simple array; pagination is not needed for this app.
@@ -72,7 +88,15 @@ anonymized. The frontend maps each cluster ID to its display name and icon.
 
 ## 3. Recommendations
 
-### `GET /api/recommendations`
+### `GET /recommendations`
+
+FastAPI route:
+
+```python
+@app.get("/recommendations")
+def recommendations():
+    ...
+```
 
 Uses the same optional `from` and `to` query parameters.
 
@@ -109,7 +133,15 @@ sections usable.
 
 ## Health check
 
-### `GET /api/health`
+### `GET /health`
+
+FastAPI route:
+
+```python
+@app.get("/health")
+def health():
+    ...
+```
 
 ```json
 { "status": "ok" }
