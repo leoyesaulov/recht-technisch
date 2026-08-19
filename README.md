@@ -43,6 +43,9 @@ After pulling `pyproject.toml` and (optionally, but recommended) `poetry.lock`, 
 
 Dependency installation is required to run the project.
 
+**Warning:** running locally is not recommended since the project is geared towards cloud. 
+Local runs may therefore be unstable or not run at all.
+
 ### API
 `poetry run python main.py`
 

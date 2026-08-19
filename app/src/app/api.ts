@@ -7,7 +7,6 @@ export type StatItem = {
 };
 
 export type DescriptiveStats = {
-  period: { from: string; to: string };
   updated_at: string;
   total_complaints: number;
   monthly_volume: { period: string; value: number }[];
@@ -18,15 +17,15 @@ export type DescriptiveStats = {
 
 export type Cluster = {
   id: string;
+  title: string;
+  text: string;
   count: number;
-  change_percentage?: number;
-  trend: "rising" | "falling" | "stable";
-  quote?: string | null;
 };
 
+export type RecommendationId = "political" | "focus" | "user_warning";
+
 export type Recommendation = {
-  id: string;
-  category: "political" | "audit" | "campaign";
+  id: RecommendationId;
   text: string;
   detail: string;
 };
