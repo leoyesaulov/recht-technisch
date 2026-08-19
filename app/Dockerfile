@@ -9,10 +9,17 @@ RUN npm install --no-audit --no-fund
 COPY . .
 RUN npm run build
 
-FROM nginx:1.27-alpine
+FROM node:22-alpine
 
-COPY --from=build /app/dist /usr/share/nginx/html
+WORKDIR /app
 
-EXPOSE 80
+# There is currently no lockfile in the project, so install from package.json.
+COPY package.json ./
+RUN npm install --omit=dev --no-audit --no-fund
 
-CMD ["nginx", "-g", "daemon off;"]
+COPY server.js ./
+COPY --from=build /app/dist ./dist
+
+EXPOSE 8080
+
+CMD ["node", "server.js"]
