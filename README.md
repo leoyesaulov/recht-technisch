@@ -37,6 +37,6 @@ Local runs may therefore be unstable or not run at all.
 
 ## References
 - [Google Cloud Project](https://console.cloud.google.com/welcome?project=recht-technisch)
-- [Webpage](recht.omniserv.me)
+- [Webpage](https://recht.omniserv.me)
 - [Backend URL](https://recht-technisch-backend-339540402730.europe-west1.run.app/)
 - [Challenge page](https://legallovestech.vercel.app/#:~:text=Recht%20Technisch,IV\)%20(PDF))
