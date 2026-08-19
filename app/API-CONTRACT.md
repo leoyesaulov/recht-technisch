@@ -2,16 +2,17 @@
 
 Status: proposed
 
-The dashboard reads three independent categories. The API returns data and
-stable IDs; the frontend owns all headings, labels, icons, and layout.
+The dashboard reads three independent categories. The API returns the complete
+available data set and stable IDs; the frontend owns layout and trims older
+monthly data for display.
 
 ## Rules
 
 - Base URL: the deployed backend URL, without a path suffix or trailing slash.
 - Requests and responses use JSON.
 - Dates use `YYYY-MM-DD`; timestamps use ISO 8601.
-- IDs are stable strings. The frontend maps IDs to display text.
-- Do not return presentation fields such as `title`, `label`, or `icon`.
+- IDs are stable strings. Cluster titles and text are supplied by the backend.
+- Do not return presentation fields such as `label` or `icon`.
 - Generated recommendation content is rendered as text, never as HTML.
 
 ## 1. Descriptive statistics
@@ -26,28 +27,32 @@ def descriptive_stats():
     ...
 ```
 
-Optional query parameters: `from` and `to`. If omitted, the backend chooses
-the latest available complete period.
+The response contains all available data. There are no period query
+parameters; the frontend trims older monthly entries for display.
 
 ```json
 {
-  "period": { "from": "2024-01-01", "to": "2024-12-31" },
   "updated_at": "2025-01-03T09:15:00Z",
   "total_complaints": 2736,
   "monthly_volume": [
     { "period": "2024-01", "value": 112 },
-    { "period": "2024-02", "value": 138 }
+    { "period": "2024-02", "value": 138 },
+    { "period": "2024-03", "value": 151 },
+    { "period": "...", "value": 0 }
   ],
   "severity": [
     { "id": "critical", "value": 492, "percentage": 18 },
-    { "id": "high", "value": 876, "percentage": 32 }
+    { "id": "high", "value": 876, "percentage": 32 },
+    { "id": "medium", "value": 1014, "percentage": 37 },
+    { "id": "low", "value": 354, "percentage": 13 }
   ],
   "channels": [
     { "id": "online", "value": 1751, "percentage": 64 },
     { "id": "in_person", "value": 985, "percentage": 36 }
   ],
   "retailers": [
-    { "id": "retailco", "value": 848, "percentage": 31 }
+    { "id": "retailco", "value": 848, "percentage": 31 },
+    { "id": "...", "value": 0, "percentage": 0 }
   ]
 }
 ```
@@ -68,23 +73,22 @@ def clusters():
     ...
 ```
 
-Uses the same optional `from` and `to` query parameters. The response is a
-simple array; pagination is not needed for this app.
+The response is a simple array containing all available clusters; pagination
+and period query parameters are not needed for this app.
 
 ```json
 [
   {
     "id": "delivery_delays",
-    "count": 247,
-    "change_percentage": 34,
-    "trend": "rising",
-    "quote": "My package hasn't arrived after 2 weeks..."
+    "title": "Delivery Delays",
+    "text": "Complaints about packages arriving late or not arriving.",
+    "count": 247
   }
 ]
 ```
 
-`trend` is `rising`, `falling`, or `stable`. `quote` is optional and must be
-anonymized. The frontend maps each cluster ID to its display name and icon.
+`title` and `text` are supplied by the backend. `text` must be anonymized if
+it contains a representative complaint.
 
 ## 3. Recommendations
 
@@ -98,7 +102,8 @@ def recommendations():
     ...
 ```
 
-Uses the same optional `from` and `to` query parameters.
+The response contains exactly three recommendations: one each for `political`,
+`focus`, and `user_warning`. There are no nested sub-suggestions.
 
 ```json
 [
@@ -107,19 +112,31 @@ Uses the same optional `from` and `to` query parameters.
     "category": "political",
     "text": "Advocate for mandatory delivery SLA legislation",
     "detail": "Push for clearer delivery commitments."
+  },
+  {
+    "id": "focus-1",
+    "category": "focus",
+    "text": "Prioritize delivery complaints in consumer advice",
+    "detail": "..."
+  },
+  {
+    "id": "user-warning-1",
+    "category": "user_warning",
+    "text": "Warn users about delayed deliveries",
+    "detail": "..."
   }
 ]
 ```
 
-`category` is one of `political`, `audit`, or `campaign`. `text` and `detail`
-are generated content, not UI labels. The frontend owns the category headings.
+`category` is one of `political`, `focus`, or `user_warning`. `text` and
+`detail` are generated content, not UI labels. Each category occurs once.
 
 ## Errors
 
-Each endpoint returns its own error. A bad date range returns `400`:
+Each endpoint returns its own error. Invalid request data returns `400`:
 
 ```json
-{ "error": "The end date must not be before the start date." }
+{ "error": "The request data is invalid." }
 ```
 
 An unexpected failure returns `500`:

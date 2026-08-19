@@ -24,12 +24,16 @@ After pulling `pyproject.toml` and (optionally, but recommended) `poetry.lock`, 
 
 Dependency installation is required to run the project.
 
+**Warning:** running locally is not recommended since the project is geared towards cloud. 
+Local runs may therefore be unstable or not run at all.
+
 ### API
 `poetry run python main.py`
 
 ### Frontend
 - cd to `app/`
 - `docker build -t complaints-dashboard . && docker run --rm -p 8080:80 complaints-dashboard`
+- Localhost: `http://localhost:8080/`
 
 ## References
 - [Google Cloud Project](https://console.cloud.google.com/welcome?project=recht-technisch)

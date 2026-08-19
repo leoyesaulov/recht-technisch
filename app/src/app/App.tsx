@@ -40,14 +40,6 @@ const FMONO    = "'DM Mono', monospace";
 const CHANNEL_COLORS = [RED, "#D0CDC8"];
 const SEVERITY_COLORS = [RED, "#E8432D", "#C4973A", "#C8C4BC"];
 
-const clusterNames: Record<string, string> = {
-  delivery_delays: "Delivery Delays",
-  product_quality: "Product Quality",
-  customer_service: "Customer Service",
-  billing_issues: "Billing Issues",
-  app_web_bugs: "App / Web Bugs",
-  return_process: "Return Process",
-};
 const clusterIcons: Record<string, typeof Clock> = {
   delivery_delays: Clock,
   product_quality: ShoppingCart,
@@ -60,8 +52,8 @@ const severityNames: Record<string, string> = { critical: "Critical", high: "Hig
 const channelNames: Record<string, string> = { online: "Online", in_person: "In-person" };
 const recommendationGroups = {
   political: { label: "POLITICAL ACTION", Icon: Landmark, color: RED, bg: "rgba(200,16,46,0.07)" },
-  audit: { label: "VERBRAUCHERZENTRALE FOCUS", Icon: Search, color: INK, bg: "rgba(26,26,26,0.06)" },
-  campaign: { label: "PUBLIC AWARENESS CAMPAIGN", Icon: Megaphone, color: "#7A5C1E", bg: "rgba(196,151,58,0.09)" },
+  focus: { label: "VERBRAUCHERZENTRALE FOCUS", Icon: Search, color: INK, bg: "rgba(26,26,26,0.06)" },
+  user_warning: { label: "USER WARNING", Icon: Megaphone, color: "#7A5C1E", bg: "rgba(196,151,58,0.09)" },
 };
 
 function monthLabel(value: string) {
@@ -133,17 +125,17 @@ export default function App() {
     return () => controller.abort();
   }, []);
 
-  const monthlyData = (stats?.monthly_volume ?? []).map((item) => ({ month: monthLabel(item.period), complaints: item.value }));
+  const monthlyData = (stats?.monthly_volume ?? []).slice(-12).map((item) => ({ month: monthLabel(item.period), complaints: item.value }));
   const severity = (stats?.severity ?? []).map((item, index) => ({ label: severityNames[item.id] ?? item.id, pct: item.percentage ?? 0, color: SEVERITY_COLORS[index % SEVERITY_COLORS.length] }));
   const channelData = (stats?.channels ?? []).map((item) => ({ name: channelNames[item.id] ?? item.id, value: item.percentage ?? 0 }));
   const retailers = (stats?.retailers ?? []).map((item) => ({ name: item.id, value: item.percentage ?? 0 }));
-  const totalYear = stats?.total_complaints ?? 0;
+  const totalComplaints = stats?.total_complaints ?? 0;
   const peakItem = monthlyData.reduce((peak, item) => item.complaints > peak.complaints ? item : peak, { month: "—", complaints: 0 });
   const recommendations = useMemo(() => {
-    return (Object.keys(recommendationGroups) as Recommendation["category"][]).map((dimension) => {
-      const config = recommendationGroups[dimension];
-      return { dimension, dimensionLabel: config.label, Icon: config.Icon, accentColor: config.color, accentBg: config.bg, items: (recommendationItems ?? []).filter((item) => item.category === dimension) };
-    }).filter((group) => group.items.length > 0);
+    return (recommendationItems ?? []).map((recommendation) => {
+      const config = recommendationGroups[recommendation.category];
+      return { ...recommendation, dimensionLabel: config.label, Icon: config.Icon, accentColor: config.color, accentBg: config.bg };
+    });
   }, [recommendationItems]);
 
   return (
@@ -205,7 +197,7 @@ export default function App() {
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "24px" }}>
           <span style={{ fontFamily: FMONO, fontSize: "11px", color: MUTED_TX }}>
-            {totalYear.toLocaleString()} complaints logged
+            {totalComplaints.toLocaleString()} complaints logged
           </span>
           <div
             style={{
@@ -264,13 +256,13 @@ export default function App() {
                 marginBottom: "10px",
               }}
             >
-              <SectionLabel>MONTHLY COMPLAINT VOLUME · {stats?.period.to.slice(0, 4) ?? "—"}</SectionLabel>
+              <SectionLabel>MONTHLY COMPLAINT VOLUME · LAST 12 MONTHS</SectionLabel>
               <div style={{ display: "flex", gap: "16px" }}>
                 <span style={{ fontFamily: FMONO, fontSize: "11px", color: MUTED_TX }}>
                   Peak: <span style={{ color: RED }}>{peakItem.complaints}</span> ({peakItem.month})
                 </span>
                 <span style={{ fontFamily: FMONO, fontSize: "11px", color: MUTED_TX }}>
-                  Total: <span style={{ color: INK, fontWeight: 500 }}>{totalYear.toLocaleString()}</span>
+                  Total: <span style={{ color: INK, fontWeight: 500 }}>{totalComplaints.toLocaleString()}</span>
                 </span>
               </div>
             </div>
@@ -548,7 +540,6 @@ export default function App() {
           {(clusters ?? []).map((c, index) => {
             const isHov = hovered === index;
             const ClusterIcon = clusterIcons[c.id] ?? Clock;
-            const rising = c.trend === "rising";
             return (
               <div
                 key={c.id}
@@ -631,18 +622,9 @@ export default function App() {
                           color: INK,
                         }}
                       >
-                        {(clusterNames[c.id] ?? c.id).toUpperCase()}
+                        {c.title.toUpperCase()}
                       </span>
                     </div>
-                    <span
-                      style={{
-                        fontFamily: FMONO,
-                        fontSize: "10px",
-                        color: rising ? RED : MUTED_TX,
-                      }}
-                    >
-                      {c.change_percentage === undefined ? "—" : `${c.change_percentage > 0 ? "+" : ""}${c.change_percentage}%`}
-                    </span>
                   </div>
 
                   {/* Quote */}
@@ -657,7 +639,7 @@ export default function App() {
                       flex: 1,
                     }}
                   >
-                    "{c.quote ?? "No representative quote available."}"
+                    {c.text}
                   </p>
 
                   {/* Footer */}
@@ -676,37 +658,6 @@ export default function App() {
                     >
                       Representative sample
                     </span>
-                    {rising && (
-                      <div
-                        style={{
-                          background: "rgba(200,16,46,0.08)",
-                          padding: "2px 7px",
-                          borderRadius: "2px",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "5px",
-                        }}
-                      >
-                        <div
-                          style={{
-                            width: "5px",
-                            height: "5px",
-                            borderRadius: "50%",
-                            background: RED,
-                          }}
-                        />
-                        <span
-                          style={{
-                            fontFamily: FDISPLAY,
-                            fontSize: "9px",
-                            letterSpacing: "0.1em",
-                            color: RED,
-                          }}
-                        >
-                          RISING
-                        </span>
-                      </div>
-                    )}
                   </div>
                 </div>
               </div>
@@ -740,7 +691,7 @@ export default function App() {
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "20px" }}>
           {recommendations.map((rec) => (
             <div
-              key={rec.dimension}
+              key={rec.id}
               style={{
                 border: `1px solid ${RULE}`,
                 borderRadius: "4px",
@@ -772,16 +723,7 @@ export default function App() {
                 </span>
               </div>
 
-              {/* Recommendation items */}
-              <div style={{ display: "flex", flexDirection: "column" }}>
-                {rec.items.map((item, idx) => (
-                  <div
-                    key={idx}
-                    style={{
-                      padding: "16px 18px",
-                      borderBottom: idx < rec.items.length - 1 ? `1px solid ${RULE}` : "none",
-                    }}
-                  >
+              <div style={{ padding: "16px 18px" }}>
                     <div
                       style={{
                         display: "flex",
@@ -799,7 +741,7 @@ export default function App() {
                           flexShrink: 0,
                         }}
                       >
-                        {String(idx + 1).padStart(2, "0")}
+                        •
                       </span>
                       <span
                         style={{
@@ -810,7 +752,7 @@ export default function App() {
                           lineHeight: "1.4",
                         }}
                       >
-                        {item.text}
+                        {rec.text}
                       </span>
                     </div>
                     <p
@@ -822,10 +764,8 @@ export default function App() {
                         margin: "0 0 0 20px",
                       }}
                     >
-                        {item.detail}
+                        {rec.detail}
                     </p>
-                  </div>
-                ))}
               </div>
             </div>
           ))}
@@ -846,7 +786,7 @@ export default function App() {
           VERBRAUCHERZENTRALE BAYERN · COMPLAINT ANALYTICS
         </span>
         <span style={{ fontFamily: FMONO, fontSize: "10px", color: MUTED_TX }}>
-          Data period: {stats?.period.from ?? "—"} – {stats?.period.to ?? "—"} · Updated {stats ? new Date(stats.updated_at).toLocaleString() : "—"}
+          Updated {stats ? new Date(stats.updated_at).toLocaleString() : "—"}
         </span>
       </footer>
     </div>
