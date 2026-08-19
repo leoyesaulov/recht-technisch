@@ -22,8 +22,8 @@ import {
   Search,
   Megaphone,
 } from "lucide-react";
-import { getDashboard } from "./api";
-import type { Dashboard, DashboardElement } from "./api";
+import { getClusters, getDescriptiveStats, getRecommendations } from "./api";
+import type { Cluster, DescriptiveStats, Recommendation } from "./api";
 
 // ── Palette ───────────────────────────────────────────────────────────────────
 const RED      = "#C8102E";
@@ -40,11 +40,29 @@ const FMONO    = "'DM Mono', monospace";
 const CHANNEL_COLORS = [RED, "#D0CDC8"];
 const SEVERITY_COLORS = [RED, "#E8432D", "#C4973A", "#C8C4BC"];
 
-const icons = { delivery: Clock, product: ShoppingCart, service: Headphones, billing: CreditCard, app: Smartphone, return: RotateCcw };
-
-function elementOf(elements: DashboardElement[], id: string) {
-  return elements.find((element) => element.id === id);
-}
+const clusterNames: Record<string, string> = {
+  delivery_delays: "Delivery Delays",
+  product_quality: "Product Quality",
+  customer_service: "Customer Service",
+  billing_issues: "Billing Issues",
+  app_web_bugs: "App / Web Bugs",
+  return_process: "Return Process",
+};
+const clusterIcons: Record<string, typeof Clock> = {
+  delivery_delays: Clock,
+  product_quality: ShoppingCart,
+  customer_service: Headphones,
+  billing_issues: CreditCard,
+  app_web_bugs: Smartphone,
+  return_process: RotateCcw,
+};
+const severityNames: Record<string, string> = { critical: "Critical", high: "High", medium: "Medium", low: "Low" };
+const channelNames: Record<string, string> = { online: "Online", in_person: "In-person" };
+const recommendationGroups = {
+  political: { label: "POLITICAL ACTION", Icon: Landmark, color: RED, bg: "rgba(200,16,46,0.07)" },
+  audit: { label: "VERBRAUCHERZENTRALE FOCUS", Icon: Search, color: INK, bg: "rgba(26,26,26,0.06)" },
+  campaign: { label: "PUBLIC AWARENESS CAMPAIGN", Icon: Megaphone, color: "#7A5C1E", bg: "rgba(196,151,58,0.09)" },
+};
 
 function monthLabel(value: string) {
   return value.includes("-") ? new Date(`${value}-01T00:00:00Z`).toLocaleDateString("en", { month: "short", timeZone: "UTC" }) : value;
@@ -64,6 +82,14 @@ function SectionLabel({ children }: { children: string }) {
     >
       {children}
     </span>
+  );
+}
+
+function SectionStatus({ error }: { error?: string }) {
+  return (
+    <p style={{ color: error ? RED : MUTED_TX, fontFamily: FBODY, fontSize: "13px" }}>
+      {error ?? "Loading…"}
+    </p>
   );
 }
 
@@ -91,46 +117,34 @@ function CustomTooltip({ active, payload, label }: any) {
 // ── Main component ────────────────────────────────────────────────────────────
 export default function App() {
   const [hovered, setHovered] = useState<number | null>(null);
-  const [dashboard, setDashboard] = useState<Dashboard | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [stats, setStats] = useState<DescriptiveStats | null>(null);
+  const [clusters, setClusters] = useState<Cluster[] | null>(null);
+  const [recommendationItems, setRecommendationItems] = useState<Recommendation[] | null>(null);
+  const [sectionErrors, setSectionErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     const controller = new AbortController();
-    getDashboard(controller.signal)
-      .then(setDashboard)
-      .catch((requestError) => {
-        if (requestError.name !== "AbortError") setError(requestError.message);
-      });
+    const load = <T,>(key: string, request: Promise<T>, setData: (data: T) => void) => request.then(setData).catch((requestError: unknown) => {
+      if (requestError instanceof Error && requestError.name !== "AbortError") setSectionErrors((current) => ({ ...current, [key]: requestError.message }));
+    });
+    load("stats", getDescriptiveStats(controller.signal), setStats);
+    load("clusters", getClusters(controller.signal), setClusters);
+    load("recommendations", getRecommendations(controller.signal), setRecommendationItems);
     return () => controller.abort();
   }, []);
 
-  const elements = dashboard?.elements ?? [];
-  const monthlyElement = elementOf(elements, "monthly-volume");
-  const severityElement = elementOf(elements, "severity");
-  const channelElement = elementOf(elements, "channels");
-  const retailerElement = elementOf(elements, "top-retailers");
-  const recommendationsElement = elementOf(elements, "recommendations");
-  const monthlyData = (monthlyElement?.items ?? []).map((item) => ({ month: monthLabel(item.label ?? ""), complaints: item.value ?? 0 }));
-  const severity = (severityElement?.items ?? []).map((item, index) => ({ label: item.label ?? item.id ?? "", pct: item.percentage ?? 0, color: SEVERITY_COLORS[index % SEVERITY_COLORS.length] }));
-  const channelData = (channelElement?.items ?? []).map((item) => ({ name: item.label ?? item.id ?? "", value: item.percentage ?? 0 }));
-  const retailers = (retailerElement?.items ?? []).map((item) => ({ name: item.label ?? item.id ?? "", value: item.percentage ?? 0 }));
-  const clusters = elements.filter((element) => element.type === "cluster");
-  const totalYear = elementOf(elements, "total-complaints")?.value ?? monthlyData.reduce((sum, item) => sum + item.complaints, 0);
+  const monthlyData = (stats?.monthly_volume ?? []).map((item) => ({ month: monthLabel(item.period), complaints: item.value }));
+  const severity = (stats?.severity ?? []).map((item, index) => ({ label: severityNames[item.id] ?? item.id, pct: item.percentage ?? 0, color: SEVERITY_COLORS[index % SEVERITY_COLORS.length] }));
+  const channelData = (stats?.channels ?? []).map((item) => ({ name: channelNames[item.id] ?? item.id, value: item.percentage ?? 0 }));
+  const retailers = (stats?.retailers ?? []).map((item) => ({ name: item.id, value: item.percentage ?? 0 }));
+  const totalYear = stats?.total_complaints ?? 0;
   const peakItem = monthlyData.reduce((peak, item) => item.complaints > peak.complaints ? item : peak, { month: "—", complaints: 0 });
   const recommendations = useMemo(() => {
-    const items = recommendationsElement?.items ?? [];
-    return ["political", "audit", "campaign"].map((dimension) => {
-      const config = {
-        political: { label: "POLITICAL ACTION", Icon: Landmark, color: RED, bg: "rgba(200,16,46,0.07)" },
-        audit: { label: "VERBRAUCHERZENTRALE FOCUS", Icon: Search, color: INK, bg: "rgba(26,26,26,0.06)" },
-        campaign: { label: "PUBLIC AWARENESS CAMPAIGN", Icon: Megaphone, color: "#7A5C1E", bg: "rgba(196,151,58,0.09)" },
-      }[dimension];
-      return { dimension, dimensionLabel: config.label, Icon: config.Icon, accentColor: config.color, accentBg: config.bg, items: items.filter((item) => item.category === dimension).map((item) => ({ title: item.title ?? item.label ?? "", detail: item.detail ?? "" })) };
+    return (Object.keys(recommendationGroups) as Recommendation["category"][]).map((dimension) => {
+      const config = recommendationGroups[dimension];
+      return { dimension, dimensionLabel: config.label, Icon: config.Icon, accentColor: config.color, accentBg: config.bg, items: (recommendationItems ?? []).filter((item) => item.category === dimension) };
     }).filter((group) => group.items.length > 0);
-  }, [recommendationsElement]);
-
-  if (!dashboard && !error) return <div style={{ padding: 40, fontFamily: FBODY, color: INK }}>Loading dashboard…</div>;
-  if (error) return <div style={{ padding: 40, fontFamily: FBODY, color: RED }}>Could not load dashboard: {error}</div>;
+  }, [recommendationItems]);
 
   return (
     <div
@@ -186,7 +200,7 @@ export default function App() {
               marginLeft: "4px",
             }}
           >
-            · {dashboard.title.toUpperCase()}
+            · COMPLAINT INTELLIGENCE
           </span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "24px" }}>
@@ -229,6 +243,8 @@ export default function App() {
           <SectionLabel>SECTION 1 OF 3</SectionLabel>
         </div>
 
+        {sectionErrors.stats && <SectionStatus error={sectionErrors.stats} />}
+
         {/* Row: time-series chart + 3 stat tiles */}
         <div
           style={{
@@ -248,7 +264,7 @@ export default function App() {
                 marginBottom: "10px",
               }}
             >
-              <SectionLabel>MONTHLY COMPLAINT VOLUME · {dashboard.period.to.slice(0, 4)}</SectionLabel>
+              <SectionLabel>MONTHLY COMPLAINT VOLUME · {stats?.period.to.slice(0, 4) ?? "—"}</SectionLabel>
               <div style={{ display: "flex", gap: "16px" }}>
                 <span style={{ fontFamily: FMONO, fontSize: "11px", color: MUTED_TX }}>
                   Peak: <span style={{ color: RED }}>{peakItem.complaints}</span> ({peakItem.month})
@@ -506,7 +522,7 @@ export default function App() {
             >
               COMPLAINT CLUSTERS
             </h2>
-            <SectionLabel>SECTION 2 OF 3 · {clusters.length} ACTIVE CLUSTERS</SectionLabel>
+            <SectionLabel>SECTION 2 OF 3 · {clusters?.length ?? 0} ACTIVE CLUSTERS</SectionLabel>
           </div>
           <span
             style={{
@@ -520,6 +536,8 @@ export default function App() {
           </span>
         </div>
 
+        {sectionErrors.clusters && <SectionStatus error={sectionErrors.clusters} />}
+
         <div
           style={{
             display: "grid",
@@ -527,9 +545,9 @@ export default function App() {
             gap: "16px",
           }}
         >
-          {clusters.map((c, index) => {
+          {(clusters ?? []).map((c, index) => {
             const isHov = hovered === index;
-            const ClusterIcon = icons[c.icon as keyof typeof icons] ?? Clock;
+            const ClusterIcon = clusterIcons[c.id] ?? Clock;
             const rising = c.trend === "rising";
             return (
               <div
@@ -613,7 +631,7 @@ export default function App() {
                           color: INK,
                         }}
                       >
-                        {c.title.toUpperCase()}
+                        {(clusterNames[c.id] ?? c.id).toUpperCase()}
                       </span>
                     </div>
                     <span
@@ -717,6 +735,8 @@ export default function App() {
           <SectionLabel>SECTION 3 OF 3 · AI-GENERATED · {recommendations.length} DIMENSIONS</SectionLabel>
         </div>
 
+        {sectionErrors.recommendations && <SectionStatus error={sectionErrors.recommendations} />}
+
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "20px" }}>
           {recommendations.map((rec) => (
             <div
@@ -790,7 +810,7 @@ export default function App() {
                           lineHeight: "1.4",
                         }}
                       >
-                        {item.title}
+                        {item.text}
                       </span>
                     </div>
                     <p
@@ -802,7 +822,7 @@ export default function App() {
                         margin: "0 0 0 20px",
                       }}
                     >
-                      {item.detail}
+                        {item.detail}
                     </p>
                   </div>
                 ))}
@@ -826,7 +846,7 @@ export default function App() {
           VERBRAUCHERZENTRALE BAYERN · COMPLAINT ANALYTICS
         </span>
         <span style={{ fontFamily: FMONO, fontSize: "10px", color: MUTED_TX }}>
-          Data period: {dashboard.period.from} – {dashboard.period.to} · Updated {new Date(dashboard.updated_at).toLocaleString()}
+          Data period: {stats?.period.from ?? "—"} – {stats?.period.to ?? "—"} · Updated {stats ? new Date(stats.updated_at).toLocaleString() : "—"}
         </span>
       </footer>
     </div>

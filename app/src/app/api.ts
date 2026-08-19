@@ -1,45 +1,53 @@
 import { API_BASE_URL } from "../config";
 
-export type DashboardItem = {
-  id?: string;
-  label?: string;
-  value?: number;
+export type StatItem = {
+  id: string;
+  value: number;
   percentage?: number;
-  category?: string;
-  title?: string;
-  detail?: string;
 };
 
-export type DashboardElement = {
+export type DescriptiveStats = {
+  period: { from: string; to: string };
+  updated_at: string;
+  total_complaints: number;
+  monthly_volume: { period: string; value: number }[];
+  severity: StatItem[];
+  channels: StatItem[];
+  retailers: StatItem[];
+};
+
+export type Cluster = {
   id: string;
-  type: "metric" | "chart" | "breakdown" | "list" | "cluster" | "recommendations";
-  title: string;
-  value?: number;
-  unit?: string;
-  chart?: string;
-  items?: DashboardItem[];
-  icon?: string;
-  count?: number;
+  count: number;
   change_percentage?: number;
-  trend?: "rising" | "falling" | "stable";
+  trend: "rising" | "falling" | "stable";
   quote?: string | null;
 };
 
-export type Dashboard = {
+export type Recommendation = {
   id: string;
-  title: string;
-  period: { from: string; to: string };
-  updated_at: string;
-  elements: DashboardElement[];
+  category: "political" | "audit" | "campaign";
+  text: string;
+  detail: string;
 };
 
-export async function getDashboard(signal?: AbortSignal): Promise<Dashboard> {
-  const response = await fetch(`${API_BASE_URL}/dashboard`, { signal });
-
+async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
+  const response = await fetch(`${API_BASE_URL}${path}`, { signal });
   if (!response.ok) {
     const error = await response.json().catch(() => null);
-    throw new Error(error?.error ?? "Could not load the dashboard.");
+    throw new Error(error?.error ?? "Could not load this dashboard section.");
   }
-
   return response.json();
+}
+
+export function getDescriptiveStats(signal?: AbortSignal) {
+  return get<DescriptiveStats>("/descriptive-stats", signal);
+}
+
+export function getClusters(signal?: AbortSignal) {
+  return get<Cluster[]>("/clusters", signal);
+}
+
+export function getRecommendations(signal?: AbortSignal) {
+  return get<Recommendation[]>("/recommendations", signal);
 }
