@@ -1,6 +1,13 @@
 services:
   api:
     build: api/
+    ports:
+      - "8080:8080"
 
   app:
     build: app/
+    environment:
+      BACKEND_URL: http://api:8080
+      PORT: 3000
+    ports:
+      - "3000:3000"
