@@ -41,6 +41,7 @@ app.use("/api", async (req, res) => {
     const authHeaders = idTokenClientPromise
       ? await (await idTokenClientPromise).getRequestHeaders(targetUrl.toString())
       : {};
+    console.log("authHeaders:", JSON.stringify(authHeaders));
 
     const hasBody = !["GET", "HEAD"].includes(req.method);
     const backendRes = await fetch(targetUrl, {
