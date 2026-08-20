@@ -12,28 +12,11 @@ Team `Recht Technisch`'s pilot project at Legal Loves Tech Hackathon 2026
 - There will be no stage / test / local environment. Everything will run in prod to reduce development compexity.
 
 ### Architecture
+* python + FastAPI
 * Google Firestore
 * Google Vertex AI (gemini-embedding-001)
 * Google Vertex AI Agent Engine
-
-### Security / Auth
-The backend Cloud Run service is deployed with `--no-allow-unauthenticated`, so
-Google's platform rejects unauthenticated requests before they ever reach the
-FastAPI app — this is the actual enforcement boundary, not just a nicety on
-top of something weaker. The frontend's Cloud Run service account has been
-granted `roles/run.invoker` on the backend service:
-
-```
-gcloud run services add-iam-policy-binding <backend-service> \
-  --member="serviceAccount:<frontend-service-account>" \
-  --role="roles/run.invoker"
-```
-
-Because a browser can never mint a Google-signed ID token itself, the
-frontend is not a pure static SPA — `app/server.js` also proxies `/api/*`
-calls from the browser to the real backend, minting an ID token via
-Application Default Credentials (`google-auth-library`) on each proxied
-request. The browser only ever talks to the frontend's own origin.
+* Typescript + Vite
 
 ## Run
 
@@ -47,7 +30,7 @@ Dependency installation is required to run the project.
 Local runs may therefore be unstable or not run at all.
 
 ### API
-`poetry run python main.py`
+`poetry run python api.py`
 
 ### Frontend
 - cd to `app/`
@@ -64,6 +47,6 @@ Local runs may therefore be unstable or not run at all.
 
 ## References
 - [Google Cloud Project](https://console.cloud.google.com/welcome?project=recht-technisch)
-- [Webpage](recht.omniserv.me) - hosted with Google CLoud Run
+- [Webpage](https://recht.omniserv.me) - hosted with Google CLoud Run
 - [Backend URL](https://recht-technisch-backend-339540402730.europe-west1.run.app/)
 - [Challenge page](https://legallovestech.vercel.app/#:~:text=Recht%20Technisch,IV\)%20(PDF))
