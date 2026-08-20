@@ -8,7 +8,6 @@
 // why this proxy exists instead of the browser calling the backend directly.
 
 import express from "express";
-import { GoogleAuth } from "google-auth-library";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -21,11 +20,17 @@ const BACKEND_URL = "https://recht-technisch-backend-339540402730.europe-west1.r
 const isLocal = BACKEND_URL.startsWith("http://localhost") ||
   BACKEND_URL.startsWith("http://host.docker.internal");
 
-// One GoogleAuth/IdTokenClient instance, reused across requests. The client
-// caches and refreshes the underlying ID token internally, so there's no
-// need to mint a fresh token per request.
-const auth = new GoogleAuth();
-const idTokenClientPromise = isLocal ? null : auth.getIdTokenClient(BACKEND_URL);
+// Fetches an OIDC ID token from the GCP metadata server. Cloud Run exposes
+// this endpoint automatically; the token is scoped to `audience` so the
+// backend can verify the caller's identity via IAM.
+async function fetchIdToken(audience) {
+  const url =
+    `http://metadata.google.internal/computeMetadata/v1/instance/` +
+    `service-accounts/default/identity?audience=${encodeURIComponent(audience)}`;
+  const res = await fetch(url, { headers: { "Metadata-Flavor": "Google" } });
+  if (!res.ok) throw new Error(`Metadata server returned HTTP ${res.status}`);
+  return res.text();
+}
 
 const app = express();
 
@@ -38,10 +43,9 @@ app.use("/api", async (req, res) => {
   );
 
   try {
-    const authHeaders = idTokenClientPromise
-      ? await (await idTokenClientPromise).getRequestHeaders(targetUrl.toString())
-      : {};
-    console.log("authHeaders:", JSON.stringify(authHeaders));
+    const authHeaders = isLocal
+      ? {}
+      : { Authorization: `Bearer ${await fetchIdToken(BACKEND_URL)}` };
 
     const hasBody = !["GET", "HEAD"].includes(req.method);
     const backendRes = await fetch(targetUrl, {
