@@ -30,20 +30,15 @@ Dependency installation is required to run the project.
 Local runs may therefore be unstable or not run at all.
 
 ### API
-`poetry run python api.py`
+- cd to `backend/`
+- `gcloud auth application-default login` if havent ran yet.
+- `poetry run python api.py`
 
 ### Frontend
 - cd to `frontend/`
-- `docker build -t complaints-dashboard . && docker run --rm -p 8080:8080 -e BACKEND_URL=https://recht-technisch-backend-339540402730.europe-west1.run.app complaints-dashboard`
-- `BACKEND_URL` is required at runtime — the server exits immediately if it's missing.
-- Without valid Application Default Credentials in the container, the static
-  site still loads but `/api/*` calls fail with a `502` (the proxy can't mint
-  an ID token). To test real proxying locally, run
-  `gcloud auth application-default login` on the host and mount the
-  resulting credentials into the container, e.g.
-  `-v ~/.config/gcloud:/root/.config/gcloud:ro`. On Cloud Run itself this is
-  automatic via the service's attached identity — no credential wiring
-  needed.
+- `gcloud auth application-default login` to login with your user to the google cloud console - get token. If havent ran yet.
+- `docker build -t complaints-dashboard . && docker run --rm -p 3000:80 -v ~/.config/gcloud:/root/.config/gcloud:ro complaints-dashboard`. The volume mount is needed to access google's credentials within the container
+- access on `http://localhost:3000`
 
 ## References
 - [Google Cloud Project](https://console.cloud.google.com/welcome?project=recht-technisch)
