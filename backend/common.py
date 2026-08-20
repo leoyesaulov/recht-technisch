@@ -130,7 +130,6 @@ def cluster_complaints() -> None:
     from sklearn.cluster import HDBSCAN
 
     db = None
-    # TODO: continue simplifying
     try:
         db = firestore.Client(project="recht-technisch")
         complaints = db.collection("complaints")
@@ -138,34 +137,31 @@ def cluster_complaints() -> None:
 
         embeddings = [document.get("embedding") for document in documents]
 
-        model = HDBSCAN(min_samples=10, min_cluster_size=30).fit(embeddings)
-        labels = [int(label) for label in model.labels_]
-        probabilities = model.probabilities_
+        model = HDBSCAN(min_samples=10, min_cluster_size=30)
+        results = model.fit(embeddings)
+        labels = [int(label) for label in results.labels_]
+        probabilities = results.probabilities_
 
         for document, label, probability in zip(
-            documents,
-            labels,
-            probabilities,
-            strict=True,
+                documents,
+                labels,
+                probabilities,
+                strict=True,
         ):
-            document.reference.update(
-                {
-                    "cluster_label": int(label),
-                    "cluster_prob": float(probability),
-                }
-            )
+            document.reference.update({
+                "cluster_label": int(label),
+                "cluster_prob": float(probability),
+            })
 
         clusters = dict()
         for l in labels:
             clusters[l] = clusters.get(l, 0) + 1
 
         for label, count in clusters.items():
-            db.collection("clusters").document(f"cluster_{label}").set(
-                {
-                    "cluster_label": label,
-                    "cluster_size": count,
-                },
-            )
+            db.collection("clusters").document(f"cluster_{label}").set({
+                "cluster_label": label,
+                "cluster_size": count,
+            })
     finally:
         if db is not None:
             db.close()
