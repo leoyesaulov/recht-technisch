@@ -33,7 +33,7 @@ Local runs may therefore be unstable or not run at all.
 `poetry run python api.py`
 
 ### Frontend
-- cd to `app/`
+- cd to `frontend/`
 - `docker build -t complaints-dashboard . && docker run --rm -p 8080:8080 -e BACKEND_URL=https://recht-technisch-backend-339540402730.europe-west1.run.app complaints-dashboard`
 - `BACKEND_URL` is required at runtime — the server exits immediately if it's missing.
 - Without valid Application Default Credentials in the container, the static
