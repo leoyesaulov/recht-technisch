@@ -6,11 +6,10 @@ ENV POETRY_HOME="/opt/poetry"
 ENV PATH="${POETRY_HOME}/bin:${PATH}"
 
 RUN python3 -c "import urllib.request; exec(urllib.request.urlopen('https://install.python-poetry.org').read())"
-# RUN curl -sSL https://install.python-poetry.org | python3 -
 
 COPY . .
 RUN poetry install
 
 EXPOSE 8080
 
-CMD ["poetry", "run", "python", "main.py"]
+CMD ["poetry", "run", "python", "api.py"]
