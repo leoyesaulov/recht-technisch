@@ -30,6 +30,8 @@ There should be a singular "ingest_data" function that loads from ... and insert
 On error raise ImportError
 """
 
+from datetime import date
+from math import isfinite
 from typing import Any
 
 
@@ -63,9 +65,25 @@ def ingest_data() -> None:
         # request on Vertex AI, so do not send the complaints as one batch.
         embeddings = []
         for complaint in raw_complaints:
+            if not isinstance(complaint, dict):
+                raise ValueError("Complaint must be an object")
+
+            body = complaint.get("body")
+            date_created = complaint.get("date_created")
+
+            if not isinstance(body, str) or not body.strip():
+                raise ValueError("Complaint body must be non-empty text")
+            if not isinstance(date_created, str):
+                raise ValueError("date_created must be a YYYY-MM-DD string")
+
+            try:
+                date_created = date.fromisoformat(date_created).isoformat()
+            except ValueError as exc:
+                raise ValueError("date_created must be a YYYY-MM-DD string") from exc
+
             response = genai_client.models.embed_content(
                 model="gemini-embedding-001",
-                contents=complaint["body"],
+                contents=body.strip(),
                 config=EmbedContentConfig(task_type="CLUSTERING"),
             )
             if len(response.embeddings) != 1:
@@ -73,7 +91,12 @@ def ingest_data() -> None:
                     "Expected exactly one embedding per complaint, "
                     f"received {len(response.embeddings)}"
                 )
-            embeddings.append(response.embeddings[0].values)
+            values = response.embeddings[0].values
+
+            if (not hasattr(values, "__iter__")) or (not all([isinstance(i, float) for i in values])):
+                raise ValueError("Malformed embedding values")
+
+            embeddings.append((date_created, body.strip(), values))
 
         complaint_embeddings = list(
             zip(raw_complaints, embeddings, strict=True)
@@ -91,16 +114,14 @@ def ingest_data() -> None:
                 default=0,
             )
 
-            for complaint, embedding in items:
+            for complaint, (date_created, body, embedding) in items:
                 max_id += 1
-                if embedding.values is None:
-                    raise ValueError("Google returned an embedding without values")
                 transaction.set(
                     complaints.document(f"complaint_{max_id}"),
                     {
                         "id": max_id,
-                        "date_created": complaint["date_created"],
-                        "body": complaint["body"],
+                        "date_created": date_created,
+                        "body": body,
                         "embedding": embedding,
                     },
                 )
@@ -122,7 +143,7 @@ def ingest_data() -> None:
 
 def cluster_complaints() -> None:
     """
-    Query complaints stored in Firestore and insert clusters back into Firestore
+    Query complaints stored in Firestore and insert labels to documents and clusters back into Firestore
     """
     # Keep these imports local: importing common.py should not require Google
     # credentials (or the comparatively heavy sklearn dependency).
