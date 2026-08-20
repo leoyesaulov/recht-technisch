@@ -16,20 +16,17 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DIST_DIR = path.join(__dirname, "dist");
 
 const PORT = 80;
-const BACKEND_URL = "https://recht-technisch-backend-339540402730.europe-west1.run.app";
+const BACKEND_URL = "http://localhost:8080"
+  //"https://recht-technisch-backend-339540402730.europe-west1.run.app";
 
-if (!BACKEND_URL) {
-  console.error(
-    "BACKEND_URL environment variable is required (e.g. https://recht-technisch-backend-....run.app)",
-  );
-  process.exit(1);
-}
+const isLocal = BACKEND_URL.startsWith("http://localhost") ||
+  BACKEND_URL.startsWith("http://host.docker.internal");
 
 // One GoogleAuth/IdTokenClient instance, reused across requests. The client
 // caches and refreshes the underlying ID token internally, so there's no
 // need to mint a fresh token per request.
 const auth = new GoogleAuth();
-const idTokenClientPromise = auth.getIdTokenClient(BACKEND_URL);
+const idTokenClientPromise = isLocal ? null : auth.getIdTokenClient(BACKEND_URL);
 
 const app = express();
 
@@ -42,14 +39,15 @@ app.use("/api", async (req, res) => {
   );
 
   try {
-    const client = await idTokenClientPromise;
-    const authHeaders = await client.getRequestHeaders(targetUrl.toString());
+    const authHeaders = idTokenClientPromise
+      ? await (await idTokenClientPromise).getRequestHeaders(targetUrl.toString())
+      : {};
 
     const hasBody = !["GET", "HEAD"].includes(req.method);
     const backendRes = await fetch(targetUrl, {
       method: req.method,
       headers: {
-        ...authHeaders,
+        ...(authHeaders || {}),
         ...(req.headers["content-type"]
           ? { "content-type": req.headers["content-type"] }
           : {}),
