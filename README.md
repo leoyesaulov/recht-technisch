@@ -40,6 +40,7 @@ unstable or not run at all.
 - cd to `backend/`
 - `poetry run python api.py`
   (Run without docker)
+- Don't forget to edit frontend/server.js with `BACKEND_URL = "http://localhost:8080"`
 
 ### Frontend
 
@@ -49,7 +50,7 @@ unstable or not run at all.
 - Run
 ```
   docker build -t complaints-dashboard . && \ 
-  docker run --rm -p 3000:3000 -v ~/.config/gcloud:/root/.config/gcloud:ro complaints-dashboard
+  docker run --rm --network host -v ~/.config/gcloud:/root/.config/gcloud:ro complaints-dashboard
 ```
 The volume mount is needed to access google's credentials within the container
 - Access on `http://localhost:3000`
