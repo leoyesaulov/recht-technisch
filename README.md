@@ -12,11 +12,14 @@ Team `Recht Technisch`'s pilot project at Legal Loves Tech Hackathon 2026
 ## Design
 
 - There will be no stage / test / local environment. Everything will run in prod to reduce development compexity.
+- Each complaint is forcefully assigned to a singular cluster. Reason: simplify clustering
+- Noise clusters are intentionally dropped.
 
 ### Architecture
 
 * python + FastAPI
 * Google Firestore
+* Google Bucket (for agents)
 * Google Vertex AI (gemini-embedding-001)
 * Google Vertex AI Agent Engine
 * Typescript + Vite
@@ -24,15 +27,12 @@ Team `Recht Technisch`'s pilot project at Legal Loves Tech Hackathon 2026
 ## Run
 
 After pulling `pyproject.toml` and (optionally, but recommended) `poetry.lock`, run `poetry install` to create project
-venv (if does not exist) and install the locked dependencies.
+venv (if it does not exist) and install the locked dependencies.
 
 `poetry run <args>` executes the args in the venv of the selected project. The usual command is hence
 `poetry run python main.py`
 
 Dependency installation is required to run the project.
-
-**Warning:** running locally is not recommended since the project is geared towards cloud. Local runs may therefore be
-unstable or not run at all.
 
 ### API
 
@@ -48,11 +48,14 @@ unstable or not run at all.
 - `gcloud auth application-default login` to login with your user to the Google Cloud console - get token. If you
   haven't run yet.
 - Run
+
 ```
   docker build -t complaints-dashboard . && \ 
   docker run --rm --network host -v ~/.config/gcloud:/root/.config/gcloud:ro complaints-dashboard
 ```
+
 The volume mount is needed to access google's credentials within the container
+
 - Access on `http://localhost:3000`
 
 ## Etc setup

@@ -29,6 +29,7 @@ Use Google's firestore. The code is geared towards cloud, so do not run locally
 There should be a singular "ingest_data" function that loads from ... and inserts into firestore.
 On error raise ImportError
 """
+import asyncio
 import csv
 import random
 import time
@@ -41,7 +42,7 @@ from sklearn.cluster import HDBSCAN
 
 from google import genai
 from google.genai import errors
-from vertexai import Client
+from agentplatform import Client
 from google.genai import types
 from google.cloud import firestore
 from google.adk.agents import Agent
@@ -50,7 +51,11 @@ from vertexai.agent_engines import AdkApp
 from google.genai.types import EmbedContentConfig
 from google.adk.sessions import VertexAiSessionService
 
+print("Finished imports")
+
 FIRESTORE_PROJECT = "recht-technisch"
+LOCATION = "europe-west1"
+AGENT_BUCKET_ID = "recht-technisch-agent-bucket"
 FIRESTORE_DATABASE = "complaints"
 
 
@@ -63,7 +68,8 @@ def _embed_with_backoff(client: genai.Client, body: str):
             return client.models.embed_content(
                 model="gemini-embedding-001",
                 contents=body,
-                config=EmbedContentConfig(task_type="CLUSTERING"),
+                # Dimensionality set arbitrarily
+                config=EmbedContentConfig(task_type="CLUSTERING", output_dimensionality=384),
             )
         except errors.ClientError as exc:
             if exc.code != 429 or attempt == max_retries:
@@ -99,7 +105,7 @@ def ingest_data() -> None:
             # it does not imply an enterprise subscription.
             enterprise=True,
             project="recht-technisch",
-            location="europe-west1",
+            location=LOCATION,
         )
 
         # gemini-embedding-001 is documented as accepting one input per
@@ -171,7 +177,7 @@ def ingest_data() -> None:
     return None
 
 
-def cluster_complaints(min_samples: int = 10, min_cluster_size: int = 30) -> None:
+def cluster_complaints(min_samples: int = 3, min_cluster_size: int = 10) -> None:
     """
     Query complaints stored in Firestore and insert labels to documents and clusters back into Firestore
     """
@@ -189,9 +195,10 @@ def cluster_complaints(min_samples: int = 10, min_cluster_size: int = 30) -> Non
         batch.commit()
 
         embeddings = [document.get("embedding") for document in documents]
-
+        print("Started cluster inference")
         model = HDBSCAN(min_samples=min_samples, min_cluster_size=min_cluster_size)
         results = model.fit(embeddings)
+        print("Finished cluster inference")
         labels = [int(label) for label in results.labels_]
         probabilities = results.probabilities_
 
@@ -232,24 +239,35 @@ def _init_agent() -> str:
     execution context.
     """
     project = FIRESTORE_PROJECT
-    location = "europe-west1"
     app_name = "complaint_cluster_compiler"
 
+    print("Init the agent.")
     try:
         agent_document = db.collection("meta").document("agent")
         stored_agent = agent_document.get()
         if stored_agent.exists:
+            print("Agent already exists, returning cache")
             return stored_agent.to_dict()["id"]
+
+        staging_bucket = "gs://" + AGENT_BUCKET_ID
+        if not staging_bucket:
+            raise RuntimeError(
+                f"{staging_bucket} must be set to an existing "
+                "Cloud Storage bucket before creating an Agent Engine, for example "
+                "gs://recht-technisch-agent-engine-staging."
+            )
 
         agent = Agent(
             name=app_name,
             model="gemini-2.5-flash",
             instruction="You are a runtime for complaint-cluster summaries.",
         )
-        remote_agent = Client(project=project, location=location).agent_engines.create(
+        print("Creating new agent engine.")
+        remote_agent = Client(project=project, location=LOCATION).agent_engines.create(
             agent=AdkApp(agent=agent, app_name=app_name),
             config={
                 "display_name": "Complaint cluster compiler",
+                "staging_bucket": staging_bucket,
                 "requirements": [
                     "google-cloud-aiplatform[agent_engines,adk]",
                     "google-adk",
@@ -258,6 +276,7 @@ def _init_agent() -> str:
         )
         agent_engine_id = remote_agent.api_resource.name
         agent_document.set({"id": agent_engine_id})
+        print("Agent engine ID created & saved successfully.")
         return agent_engine_id
     finally:
         db.close()
@@ -277,10 +296,11 @@ def compile_semantic_averages() -> None:
         complaints = db.collection("complaints")
         sessions = VertexAiSessionService(
             project="recht-technisch",
-            location="europe-west1",
+            location=LOCATION,
             agent_engine_id=agent_engine_id,
         )
         for cluster_document in clusters.stream():
+            print(f"Compiling average for id - {cluster_document.to_dict()['cluster_label']}")
             label = cluster_document.to_dict()["cluster_label"]
             cluster_complaints = list(
                 complaints.where("cluster_label", "==", label).stream()
@@ -337,6 +357,7 @@ def compile_semantic_averages() -> None:
                     body_db.close()
                 return {"status": "body stored"}
 
+            print("\tRunning the agent")
             agent = Agent(
                 name="complaint_cluster_compiler",
                 model="gemini-2.5-flash",
@@ -353,7 +374,11 @@ def compile_semantic_averages() -> None:
             )
             app_name = "complaint_cluster_compiler"
             user_id = "semantic-average-job"
-            session = sessions.create_session(app_name=app_name, user_id=user_id)
+            # VertexAiSessionService exposes an async API.  Resolve the
+            # coroutine before passing the concrete session ID to Runner.
+            session = asyncio.run(
+                sessions.create_session(app_name=app_name, user_id=user_id)
+            )
             runner = Runner(
                 agent=agent,
                 app_name=app_name,
@@ -375,6 +400,7 @@ def compile_semantic_averages() -> None:
             stored_cluster = clusters.document(cluster_document.id).get().to_dict()
             if not stored_cluster.get("cluster_title") or not stored_cluster.get("cluster_body"):
                 raise RuntimeError(f"Agent did not provide both fields for cluster {label}")
+            print("\tSuccessfully finished agent task.")
     finally:
         pass
 
@@ -382,6 +408,14 @@ def compile_semantic_averages() -> None:
 
 
 if __name__ == "__main__":
-    print("Started ingestion")
-    ingest_data()
-    print("Finished ingestion successfully!")
+    # print("Started ingesting.")
+    # ingest_data()
+    # print("Finished ingesting successfully!")
+
+    # print("Started clustering pipeline")
+    # cluster_complaints(min_samples=3, min_cluster_size=10)
+    # print("Finished clustering pipeline successfully!")
+
+    print("Start pipeline to compile semantic average")
+    compile_semantic_averages()
+    print("Finished pipeline to compile semantic average successfully!")
