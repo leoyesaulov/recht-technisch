@@ -10,26 +10,23 @@
 import express from "express";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { GoogleAuth } from "google-auth-library";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DIST_DIR = path.join(__dirname, "dist");
 
-const PORT = 80;
+const PORT = 3000;
 const BACKEND_URL = "https://recht-technisch-backend-339540402730.europe-west1.run.app";
 
 const isLocal = BACKEND_URL.startsWith("http://localhost") ||
   BACKEND_URL.startsWith("http://host.docker.internal");
 
-// Fetches an OIDC ID token from the GCP metadata server. Cloud Run exposes
-// this endpoint automatically; the token is scoped to `audience` so the
-// backend can verify the caller's identity via IAM.
+// Fetches an OIDC ID token using google-auth-library, which works both on
+// Cloud Run (metadata server) and locally (ADC / mounted gcloud credentials).
+const _auth = new GoogleAuth();
 async function fetchIdToken(audience) {
-  const url =
-    `http://metadata.google.internal/computeMetadata/v1/instance/` +
-    `service-accounts/default/identity?audience=${encodeURIComponent(audience)}`;
-  const res = await fetch(url, { headers: { "Metadata-Flavor": "Google" } });
-  if (!res.ok) throw new Error(`Metadata server returned HTTP ${res.status}`);
-  return res.text();
+  const client = await _auth.getIdTokenClient(audience);
+  return client.idTokenProvider.fetchIdToken(audience);
 }
 
 const app = express();
