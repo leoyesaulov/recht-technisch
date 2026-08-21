@@ -29,15 +29,16 @@ Use Google's firestore. The code is geared towards cloud, so do not run locally
 There should be a singular "ingest_data" function that loads from ... and inserts into firestore.
 On error raise ImportError
 """
-
+import csv
 import random
+import time
 from math import ceil
-from typing import Any
 from datetime import date
 
 from sklearn.cluster import HDBSCAN
 
 from google import genai
+from google.genai import errors
 from vertexai import Client
 from google.genai import types
 from google.cloud import firestore
@@ -47,6 +48,42 @@ from vertexai.agent_engines import AdkApp
 from google.genai.types import EmbedContentConfig
 from google.adk.sessions import VertexAiSessionService
 
+FIRESTORE_PROJECT = "recht-technisch"
+FIRESTORE_DATABASE = "complaints"
+
+
+def _firestore_client() -> firestore.Client:
+    """Create a client for the project's named complaints database."""
+    return firestore.Client(
+        project=FIRESTORE_PROJECT,
+        database=FIRESTORE_DATABASE,
+    )
+
+
+def _embed_with_backoff(client: genai.Client, body: str):
+    """Embed one complaint, retrying temporary rate-limit responses."""
+    max_retries = 5
+
+    for attempt in range(max_retries + 1):
+        try:
+            return client.models.embed_content(
+                model="gemini-embedding-001",
+                contents=body,
+                config=EmbedContentConfig(task_type="CLUSTERING"),
+            )
+        except errors.ClientError as exc:
+            if exc.code != 429 or attempt == max_retries:
+                raise
+
+            # Full jitter avoids repeatedly retrying at the same instant.
+            delay = random.uniform(0, 2 ** attempt)
+            print(
+                f"Embedding rate-limited; retrying in {delay:.1f}s "
+                f"(attempt {attempt + 1}/{max_retries})"
+            )
+            time.sleep(delay)
+    raise ValueError("Failed to embed complaint")
+
 
 def ingest_data() -> None:
     """Import the complaints into the Firestore"""
@@ -55,10 +92,13 @@ def ingest_data() -> None:
 
     try:
         # ADC automatically picks up the Cloud Run service account credentials.
-        db = firestore.Client(project="recht-technisch")
+        db = _firestore_client()
         complaints = db.collection("complaints")
-        # TODO: figure out raw complaints
-        raw_complaints: list[Any] = []
+        clean_complaints = []
+
+        with open("/Users/Misha/Documents/Dev/projects/playground/temp/prunned_complaints.csv") as f:
+            raw_complaints = list(csv.DictReader(f))
+
         if not raw_complaints:
             return None
 
@@ -72,7 +112,6 @@ def ingest_data() -> None:
 
         # gemini-embedding-001 is documented as accepting one input per
         # request on Vertex AI, so do not send the complaints as one batch.
-        embeddings = []
         for complaint in raw_complaints:
             if not isinstance(complaint, dict):
                 raise ValueError("Complaint must be an object")
@@ -90,11 +129,7 @@ def ingest_data() -> None:
             except ValueError as exc:
                 raise ValueError("date_created must be a YYYY-MM-DD string") from exc
 
-            response = genai_client.models.embed_content(
-                model="gemini-embedding-001",
-                contents=body.strip(),
-                config=EmbedContentConfig(task_type="CLUSTERING"),
-            )
+            response = _embed_with_backoff(genai_client, body.strip())
             if len(response.embeddings) != 1:
                 raise ValueError(
                     "Expected exactly one embedding per complaint, "
@@ -105,11 +140,7 @@ def ingest_data() -> None:
             if (not hasattr(values, "__iter__")) or (not all([isinstance(i, float) for i in values])):
                 raise ValueError("Malformed embedding values")
 
-            embeddings.append((date_created, body.strip(), values))
-
-        complaint_embeddings = list(
-            zip(raw_complaints, embeddings, strict=True)
-        )
+            clean_complaints.append({"date_created": date_created, "body": body.strip(), "embedding": values})
 
         @firestore.transactional
         def write_complaints(transaction, items):
@@ -123,22 +154,22 @@ def ingest_data() -> None:
                 default=0,
             )
 
-            for complaint, (date_created, body, embedding) in items:
+            for complaint in items:
                 max_id += 1
                 transaction.set(
                     complaints.document(f"complaint_{max_id}"),
                     {
                         "id": max_id,
-                        "date_created": date_created,
-                        "body": body,
-                        "embedding": embedding,
+                        "date_created": complaint["date_created"],
+                        "body": complaint["body"],
+                        "embedding": complaint["embedding"],
                     },
                 )
 
         # Firestore transactions support at most 500 writes.
-        for start in range(0, len(complaint_embeddings), 400):
+        for start in range(0, len(clean_complaints), 400):
             write_complaints(
-                db.transaction(), complaint_embeddings[start: start + 400]
+                db.transaction(), clean_complaints[start: start + 400]
             )
 
     finally:
@@ -156,7 +187,7 @@ def cluster_complaints(min_samples: int = 10, min_cluster_size: int = 30) -> Non
     """
     db = None
     try:
-        db = firestore.Client(project="recht-technisch")
+        db = _firestore_client()
         complaints = db.collection("complaints")
         documents = list(complaints.select(["embedding"]).stream())
 
@@ -212,10 +243,10 @@ def _init_agent() -> str:
     function owns its Firestore client so it can safely be called from any
     execution context.
     """
-    project = "recht-technisch"
+    project = FIRESTORE_PROJECT
     location = "europe-west1"
     app_name = "complaint_cluster_compiler"
-    db = firestore.Client(project=project)
+    db = _firestore_client()
 
     try:
         agent_document = db.collection("meta").document("agent")
@@ -256,7 +287,7 @@ def compile_semantic_averages() -> None:
 
     db = None
     try:
-        db = firestore.Client(project="recht-technisch")
+        db = _firestore_client()
         clusters = db.collection("clusters")
         complaints = db.collection("complaints")
         sessions = VertexAiSessionService(
@@ -294,7 +325,7 @@ def compile_semantic_averages() -> None:
                     raise ValueError("Title must not be empty")
                 if len(title) > 60:
                     raise ValueError("Title must be at most 60 characters")
-                title_db = firestore.Client(project="recht-technisch")
+                title_db = _firestore_client()
                 try:
                     title_db.collection("clusters").document(
                         cluster_document.id
@@ -312,7 +343,7 @@ def compile_semantic_averages() -> None:
                     raise ValueError("Body must not be empty")
                 if len(body) > 120:
                     raise ValueError("Body must be at most 120 characters")
-                body_db = firestore.Client(project="recht-technisch")
+                body_db = _firestore_client()
                 try:
                     body_db.collection("clusters").document(
                         cluster_document.id
@@ -367,4 +398,6 @@ def compile_semantic_averages() -> None:
 
 
 if __name__ == "__main__":
-    pass
+    print("Started ingestion")
+    ingest_data()
+    print("Finished ingestion successfully!")
