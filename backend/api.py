@@ -66,8 +66,13 @@ def test_connection():
 
 @app.get("/health")
 def health():
-    # TODO: verify Firestore connectivity once data sources are connected
-    return {"status": "ok"}
+    try:
+        db = firestore.Client(project="recht-technisch", database="complaints")
+        first = next(iter(db.collection("complaints").limit(1).stream()), None)
+        db_status = "ok" if first is not None else "empty"
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail={"status": "error", "db": str(exc)})
+    return {"status": "ok", "db": db_status}
 
 
 _stats_cache: dict = {"stats": None, "expires_at": 0.0}
@@ -130,10 +135,8 @@ def _classify_batch(client, batch: list[dict]) -> list[dict]:
 
 
 def _build_stats() -> DescriptiveStatsResponse:
-    print("DEBUG _build_stats: connecting to Firestore")
     db = firestore.Client(project="recht-technisch", database="complaints")
     docs = list(db.collection("complaints").stream())
-    print(f"DEBUG _build_stats: fetched {len(docs)} docs from Firestore")
 
     complaints = [
         {"date_created": d.get("date_created"), "body": d.get("body") or ""}
@@ -156,16 +159,12 @@ def _build_stats() -> DescriptiveStatsResponse:
     else:
         periods = []
     monthly_volume = [MonthlyVolume(period=p, value=month_counts.get(p, 0)) for p in periods]
-    print(f"DEBUG _build_stats: monthly_volume computed, {len(monthly_volume)} periods")
 
     # AI classification for severity / channel / retailer
-    print("DEBUG _build_stats: initialising genai client")
     genai_client = genai.Client(vertexai=True, project="recht-technisch", location="europe-west1")
     classifications: list[dict] = []
     for i in range(0, total, 50):
-        print(f"DEBUG _build_stats: classifying batch {i}–{min(i + 50, total)} of {total}")
         classifications.extend(_classify_batch(genai_client, complaints[i : i + 50]))
-    print(f"DEBUG _build_stats: classification done, {len(classifications)} results")
 
     sev_counts: dict[str, int] = defaultdict(int)
     ch_counts: dict[str, int] = defaultdict(int)
