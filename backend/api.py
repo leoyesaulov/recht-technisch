@@ -113,7 +113,7 @@ def _classify_batch(client, batch: list[dict]) -> list[dict]:
         f"[{i + 1}] {c['body'][:300]}" for i, c in enumerate(batch)
     )
     response = client.models.generate_content(
-        model="gemini-2.0-flash",
+        model="gemini-2.5-flash-lite",
         contents=_CLASSIFY_PROMPT.format(bodies=bodies),
         config=types.GenerateContentConfig(response_mime_type="application/json"),
     )
