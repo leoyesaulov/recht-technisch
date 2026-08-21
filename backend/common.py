@@ -364,3 +364,7 @@ def compile_semantic_averages() -> None:
             db.close()
 
     return None
+
+
+if __name__ == "__main__":
+    pass
