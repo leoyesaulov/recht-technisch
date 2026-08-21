@@ -1,13 +1,13 @@
 import json
 import time
+import uvicorn
+from typing import Literal
+from pydantic import BaseModel
+from google.genai import types
 from collections import defaultdict
 from datetime import datetime, timezone
-from typing import Literal
-
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-import uvicorn
 
 app = FastAPI(title="Recht Technisch API", version="0.1.0")
 
@@ -106,13 +106,14 @@ def _month_range(start: str, end: str) -> list[str]:
 
 
 def _classify_batch(client, batch: list[dict]) -> list[dict]:
+
     bodies = "\n".join(
         f"[{i + 1}] {c['body'][:300]}" for i, c in enumerate(batch)
     )
     response = client.models.generate_content(
         model="gemini-2.0-flash",
         contents=_CLASSIFY_PROMPT.format(bodies=bodies),
-        config={"response_mime_type": "application/json"},
+        config=types.GenerateContentConfig(response_mime_type="application/json"),
     )
     parsed = json.loads(response.text)
     result = []
