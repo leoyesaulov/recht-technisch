@@ -49,7 +49,7 @@ unstable or not run at all.
 - Run
 ```
   docker build -t complaints-dashboard . && \ 
-  docker run --rm -p 3000:80 -v ~/.config/gcloud:/root/.config/gcloud:ro complaints-dashboard`.
+  docker run --rm -p 3000:3000 -v ~/.config/gcloud:/root/.config/gcloud:ro complaints-dashboard
 ```
 The volume mount is needed to access google's credentials within the container
 - Access on `http://localhost:3000`
