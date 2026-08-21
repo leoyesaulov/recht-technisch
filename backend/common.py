@@ -30,10 +30,22 @@ There should be a singular "ingest_data" function that loads from ... and insert
 On error raise ImportError
 """
 
-from datetime import date
-from math import ceil
 import random
+from math import ceil
 from typing import Any
+from datetime import date
+
+from sklearn.cluster import HDBSCAN
+
+from google import genai
+from vertexai import Client
+from google.genai import types
+from google.cloud import firestore
+from google.adk.agents import Agent
+from google.adk.runners import Runner
+from vertexai.agent_engines import AdkApp
+from google.genai.types import EmbedContentConfig
+from google.adk.sessions import VertexAiSessionService
 
 
 def ingest_data() -> None:
@@ -43,10 +55,6 @@ def ingest_data() -> None:
 
     try:
         # ADC automatically picks up the Cloud Run service account credentials.
-        from google.cloud import firestore
-        from google import genai
-        from google.genai.types import EmbedContentConfig
-
         db = firestore.Client(project="recht-technisch")
         complaints = db.collection("complaints")
         # TODO: figure out raw complaints
@@ -146,11 +154,6 @@ def cluster_complaints(min_samples: int = 10, min_cluster_size: int = 30) -> Non
     """
     Query complaints stored in Firestore and insert labels to documents and clusters back into Firestore
     """
-    # Keep these imports local: importing common.py should not require Google
-    # credentials (or the comparatively heavy sklearn dependency).
-    from google.cloud import firestore
-    from sklearn.cluster import HDBSCAN
-
     db = None
     try:
         db = firestore.Client(project="recht-technisch")
@@ -209,11 +212,6 @@ def _init_agent() -> str:
     function owns its Firestore client so it can safely be called from any
     execution context.
     """
-    from google.cloud import firestore
-    from google.adk.agents import Agent
-    from vertexai import Client
-    from vertexai.agent_engines import AdkApp
-
     project = "recht-technisch"
     location = "europe-west1"
     app_name = "complaint_cluster_compiler"
@@ -254,14 +252,6 @@ def compile_semantic_averages() -> None:
     state.  Consequently, conversational text (including a final answer from
     the model) can never accidentally become a cluster summary.
     """
-    # Keep these imports local: importing common.py must not require Google
-    # credentials or the (comparatively heavy) GenAI package.
-    from google.cloud import firestore
-    from google.adk.agents import Agent
-    from google.adk.runners import Runner
-    from google.adk.sessions import VertexAiSessionService
-    from google.genai import types
-
     agent_engine_id = _init_agent()
 
     db = None
