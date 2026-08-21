@@ -1,9 +1,11 @@
 import json
 import time
 import uvicorn
+from google import genai
 from typing import Literal
 from pydantic import BaseModel
 from google.genai import types
+from google.cloud import firestore
 from collections import defaultdict
 from datetime import datetime, timezone
 from fastapi import FastAPI, HTTPException
@@ -128,11 +130,11 @@ def _classify_batch(client, batch: list[dict]) -> list[dict]:
 
 
 def _build_stats() -> DescriptiveStatsResponse:
-    from google.cloud import firestore
-    from google import genai
 
+    print("DEBUG _build_stats: connecting to Firestore")
     db = firestore.Client(project="recht-technisch")
     docs = list(db.collection("complaints").stream())
+    print(f"DEBUG _build_stats: fetched {len(docs)} docs from Firestore")
 
     complaints = [
         {"date_created": d.get("date_created"), "body": d.get("body") or ""}
@@ -155,12 +157,16 @@ def _build_stats() -> DescriptiveStatsResponse:
     else:
         periods = []
     monthly_volume = [MonthlyVolume(period=p, value=month_counts.get(p, 0)) for p in periods]
+    print(f"DEBUG _build_stats: monthly_volume computed, {len(monthly_volume)} periods")
 
     # AI classification for severity / channel / retailer
+    print("DEBUG _build_stats: initialising genai client")
     genai_client = genai.Client(vertexai=True, project="recht-technisch", location="europe-west1")
     classifications: list[dict] = []
     for i in range(0, total, 50):
+        print(f"DEBUG _build_stats: classifying batch {i}–{min(i + 50, total)} of {total}")
         classifications.extend(_classify_batch(genai_client, complaints[i : i + 50]))
+    print(f"DEBUG _build_stats: classification done, {len(classifications)} results")
 
     sev_counts: dict[str, int] = defaultdict(int)
     ch_counts: dict[str, int] = defaultdict(int)
@@ -204,7 +210,9 @@ def descriptive_stats():
         return _stats_cache["stats"]
     try:
         result = _build_stats()
-    except Exception:
+    except Exception as exc:
+        import traceback
+        print(f"ERROR descriptive_stats: {exc}\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail={"error": "Something went wrong."})
     _stats_cache["stats"] = result
     _stats_cache["expires_at"] = now + _CACHE_TTL
