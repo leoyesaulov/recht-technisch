@@ -5,6 +5,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from shared import DescriptiveStatsResponse, ClusterResponse, RecommendationResponse
 from stats import _build_stats, _stats_cache, _CACHE_TTL
+from recommend import build_recommendations, _reco_cache, _RECO_TTL
 
 app = FastAPI(title="Recht Technisch API", version="0.1.0")
 
@@ -98,38 +99,18 @@ def clusters():
 
 @app.get("/recommendations", response_model=list[RecommendationResponse])
 def recommendations():
-    # TODO: Replace with a call to the Vertex AI Agent Engine that analyses the current
-    # Firestore complaint corpus and returns fresh recommendations.
-    # Cache the result (TTL ~1 hour) to avoid hitting the LLM on every request.
-    return [
-        RecommendationResponse(
-            id="political",
-            text="Advocate for mandatory delivery SLA legislation",
-            detail=(
-                "Delivery delays account for the single largest complaint cluster (847 cases). "
-                "Push for statutory maximum delivery windows with automatic consumer compensation, "
-                "analogous to EU flight-delay rules."
-            ),
-        ),
-        RecommendationResponse(
-            id="focus",
-            text="Prioritise delivery and billing complaints in consumer advice",
-            detail=(
-                "Delivery delays and billing issues together represent 37% of all complaints. "
-                "Advisors should be briefed with a dedicated FAQ covering parcel tracking rights, "
-                "double-charge dispute procedures, and escalation paths."
-            ),
-        ),
-        RecommendationResponse(
-            id="user_warning",
-            text="Issue a public alert about recurring delivery and return failures",
-            detail=(
-                "Bol (25%) and Coolblue (21%) together account for 46% of logged complaints, "
-                "with delivery and return failures dominating. A consumer-facing advisory during "
-                "the current peak period is warranted."
-            ),
-        ),
-    ]
+    now = time.time()
+    if _reco_cache["recs"] is not None and now < _reco_cache["expires_at"]:
+        return _reco_cache["recs"]
+    try:
+        result = build_recommendations()
+    except Exception as exc:
+        import traceback
+        print(f"ERROR recommendations: {exc}\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail={"error": "Something went wrong."})
+    _reco_cache["recs"] = result
+    _reco_cache["expires_at"] = now + _RECO_TTL
+    return result
 
 
 uvicorn.run(app, host="0.0.0.0", port=8080)
