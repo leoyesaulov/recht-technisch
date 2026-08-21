@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DIST_DIR = path.join(__dirname, "dist");
 
-const PORT = 80;
+const PORT = 3000;
 const BACKEND_URL = "https://recht-technisch-backend-339540402730.europe-west1.run.app";
 
 const isLocal = BACKEND_URL.startsWith("http://localhost") ||
