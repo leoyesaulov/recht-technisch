@@ -202,6 +202,51 @@ def cluster_complaints(min_samples: int = 10, min_cluster_size: int = 30) -> Non
     return None
 
 
+def _init_agent() -> str:
+    """Return the owned Agent Engine ID, creating it when necessary.
+
+    The Agent Engine is shared by the semantic-average jobs, while this
+    function owns its Firestore client so it can safely be called from any
+    execution context.
+    """
+    from google.cloud import firestore
+    from google.adk.agents import Agent
+    from vertexai import Client
+    from vertexai.agent_engines import AdkApp
+
+    project = "recht-technisch"
+    location = "europe-west1"
+    app_name = "complaint_cluster_compiler"
+    db = firestore.Client(project=project)
+
+    try:
+        agent_document = db.collection("meta").document("agent")
+        stored_agent = agent_document.get()
+        if stored_agent.exists:
+            return stored_agent.to_dict()["id"]
+
+        agent = Agent(
+            name=app_name,
+            model="gemini-2.5-flash",
+            instruction="You are a runtime for complaint-cluster summaries.",
+        )
+        remote_agent = Client(project=project, location=location).agent_engines.create(
+            agent=AdkApp(agent=agent, app_name=app_name),
+            config={
+                "display_name": "Complaint cluster compiler",
+                "requirements": [
+                    "google-cloud-aiplatform[agent_engines,adk]",
+                    "google-adk",
+                ],
+            },
+        )
+        agent_engine_id = remote_agent.api_resource.name
+        agent_document.set({"id": agent_engine_id})
+        return agent_engine_id
+    finally:
+        db.close()
+
+
 def compile_semantic_averages() -> None:
     """Generate and store a title and summary for every complaint cluster.
 
@@ -211,23 +256,13 @@ def compile_semantic_averages() -> None:
     """
     # Keep these imports local: importing common.py must not require Google
     # credentials or the (comparatively heavy) GenAI package.
-    import os
-
     from google.cloud import firestore
     from google.adk.agents import Agent
     from google.adk.runners import Runner
     from google.adk.sessions import VertexAiSessionService
     from google.genai import types
 
-    agent_engine_id = os.environ.get("AGENT_RUNTIME_ID")
-    if not agent_engine_id:
-        raise RuntimeError(
-            "AGENT_RUNTIME_ID must contain the deployed Vertex AI "
-            "Agent Engine resource ID"
-        )
-    # Accept either the numeric ID or the full resource name copied from the
-    # console: projects/.../locations/.../reasoningEngines/<numeric-id>.
-    agent_engine_id = agent_engine_id.rsplit("/", 1)[-1]
+    agent_engine_id = _init_agent()
 
     db = None
     try:
@@ -319,22 +354,21 @@ def compile_semantic_averages() -> None:
                 session_service=sessions,
             )
             message = types.Content(role="user", parts=[types.Part(text=prompt)])
+            # Iterating the event stream drives the complete agent run,
+            # including its insert_title and insert_body tool calls. The
+            # individual events are not otherwise needed by this job.
             for _event in runner.run(
-                user_id=user_id,
-                session_id=session.id,
-                new_message=message,
+                    user_id=user_id,
+                    session_id=session.id,
+                    new_message=message,
             ):
                 pass
 
             # The tools perform the writes. This read only verifies that the
             # agent actually called both tools; no model text is persisted.
             stored_cluster = clusters.document(cluster_document.id).get().to_dict()
-            if not stored_cluster.get("cluster_title") or not stored_cluster.get(
-                "cluster_body"
-            ):
-                raise RuntimeError(
-                    f"Agent did not provide both fields for cluster {label}"
-                )
+            if not stored_cluster.get("cluster_title") or not stored_cluster.get("cluster_body"):
+                raise RuntimeError(f"Agent did not provide both fields for cluster {label}")
     finally:
         if db is not None:
             db.close()
