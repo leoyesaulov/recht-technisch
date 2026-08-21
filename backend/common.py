@@ -195,53 +195,49 @@ def cluster_complaints(min_samples: int = 3, min_cluster_size: int = 10) -> None
     """
     Query complaints stored in Firestore and insert labels to documents and clusters back into Firestore
     """
-    try:
-        complaints = db.collection("complaints")
-        documents = list(complaints.select(["embedding"]).stream())
+    complaints = db.collection("complaints")
+    documents = list(complaints.select(["embedding"]).stream())
 
-        # Cluster documents are a snapshot of the latest clustering run.
-        # Remove the previous snapshot so clusters that disappear are not
-        # retained in Firestore.
-        old_clusters = list(db.collection("clusters").stream())
-        batch = db.batch()
-        for cluster_document in old_clusters:
-            batch.delete(cluster_document.reference)
-        batch.commit()
+    # Cluster documents are a snapshot of the latest clustering run.
+    # Remove the previous snapshot so clusters that disappear are not
+    # retained in Firestore.
+    old_clusters = list(db.collection("clusters").stream())
+    batch = db.batch()
+    for cluster_document in old_clusters:
+        batch.delete(cluster_document.reference)
+    batch.commit()
 
-        embeddings = [document.get("embedding") for document in documents]
-        print("Started cluster inference")
-        model = HDBSCAN(min_samples=min_samples, min_cluster_size=min_cluster_size)
-        results = model.fit(embeddings)
-        print("Finished cluster inference")
-        labels = [int(label) for label in results.labels_]
-        probabilities = results.probabilities_
+    embeddings = [document.get("embedding") for document in documents]
+    print("Started cluster inference")
+    model = HDBSCAN(min_samples=min_samples, min_cluster_size=min_cluster_size)
+    results = model.fit(embeddings)
+    print("Finished cluster inference")
+    labels = [int(label) for label in results.labels_]
+    probabilities = results.probabilities_
 
-        for document, label, probability in zip(
-                documents,
-                labels,
-                probabilities,
-                strict=True,
-        ):
-            document.reference.update({
-                "cluster_label": int(label),
-                "cluster_prob": float(probability),
-            })
+    for document, label, probability in zip(
+            documents,
+            labels,
+            probabilities,
+            strict=True,
+    ):
+        document.reference.update({
+            "cluster_label": int(label),
+            "cluster_prob": float(probability),
+        })
 
-        clusters = dict()
-        for l in labels:
-            # HDBSCAN uses -1 for noise; noise is not a complaint cluster.
-            if l >= 0:
-                clusters[l] = clusters.get(l, 0) + 1
+    clusters = dict()
+    for l in labels:
+        # HDBSCAN uses -1 for noise; noise is not a complaint cluster.
+        if l >= 0:
+            clusters[l] = clusters.get(l, 0) + 1
 
-        for label, count in clusters.items():
-            db.collection("clusters").document(f"cluster_{label}").set({
-                "cluster_label": label,
-                "cluster_size": count,
-            })
-    finally:
-        if db is not None:
-            db.close()
-
+    for label, count in clusters.items():
+        db.collection("clusters").document(f"cluster_{label}").set({
+            "cluster_label": label,
+            "cluster_size": count,
+        })
+    
     return None
 
 
@@ -361,8 +357,6 @@ Complaints end."""
     finally:
         if genai_client is not None:
             genai_client.close()
-        if db is not None:
-            db.close()
     return None
 
 
