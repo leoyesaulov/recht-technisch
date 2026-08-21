@@ -3,15 +3,18 @@
 Team `Recht Technisch`'s pilot project at Legal Loves Tech Hackathon 2026
 
 ## Team members
+
 - Leo Y
 - Daniel B
 - Timon G
 - Michael K
 
 ## Design
+
 - There will be no stage / test / local environment. Everything will run in prod to reduce development compexity.
 
 ### Architecture
+
 * python + FastAPI
 * Google Firestore
 * Google Vertex AI (gemini-embedding-001)
@@ -20,28 +23,50 @@ Team `Recht Technisch`'s pilot project at Legal Loves Tech Hackathon 2026
 
 ## Run
 
-After pulling `pyproject.toml` and (optionally, but recommended) `poetry.lock`, run `poetry install` to create project venv (if does not exist) and install the locked dependencies.
+After pulling `pyproject.toml` and (optionally, but recommended) `poetry.lock`, run `poetry install` to create project
+venv (if does not exist) and install the locked dependencies.
 
-`poetry run <args>` executes the args in the venv of the selected project. The usual command is hence `poetry run python main.py`
+`poetry run <args>` executes the args in the venv of the selected project. The usual command is hence
+`poetry run python main.py`
 
 Dependency installation is required to run the project.
 
-**Warning:** running locally is not recommended since the project is geared towards cloud. 
-Local runs may therefore be unstable or not run at all.
+**Warning:** running locally is not recommended since the project is geared towards cloud. Local runs may therefore be
+unstable or not run at all.
 
 ### API
+
+- Make sure you're logged in with Google Cloud (see Etc setup)
 - cd to `backend/`
-- `gcloud auth application-default login` if havent ran yet.
 - `poetry run python api.py`
+  (Run without docker)
 
 ### Frontend
+
 - cd to `frontend/`
-- `gcloud auth application-default login` to login with your user to the google cloud console - get token. If havent ran yet.
-- `docker build -t complaints-dashboard . && docker run --rm -p 3000:80 -v ~/.config/gcloud:/root/.config/gcloud:ro complaints-dashboard`. The volume mount is needed to access google's credentials within the container
-- access on `http://localhost:3000`
+- `gcloud auth application-default login` to login with your user to the Google Cloud console - get token. If you
+  haven't run yet.
+- Run
+```
+  docker build -t complaints-dashboard . && \ 
+  docker run --rm -p 3000:80 -v ~/.config/gcloud:/root/.config/gcloud:ro complaints-dashboard`.
+```
+The volume mount is needed to access google's credentials within the container
+- Access on `http://localhost:3000`
+
+## Etc setup
+
+### Integrate cloud environment locally
+
+- pull `gcloud` cli
+- `gcloud auth login` to auth the cli
+- `gcloud config set project recht-technisch` to set the default project
+- `gcloud auth application-default login` to pull the ADC locally
+- Done. Now you can run the code locally as if it were on the cloud
 
 ## References
+
 - [Google Cloud Project](https://console.cloud.google.com/welcome?project=recht-technisch)
-- [Webpage](https://recht.omniserv.me) - hosted with Google CLoud Run
+- [Webpage](https://recht.omniserv.me) - hosted with Google Cloud Run
 - [Backend URL](https://recht-technisch-backend-339540402730.europe-west1.run.app/)
-- [Challenge page](https://legallovestech.vercel.app/#:~:text=Recht%20Technisch,IV\)%20(PDF))
+- [Challenge page](https://legallovestech.vercel.app/)
