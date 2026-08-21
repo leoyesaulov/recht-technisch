@@ -128,7 +128,10 @@ export default function App() {
   const monthlyData = (stats?.monthly_volume ?? []).slice(-12).map((item) => ({ month: monthLabel(item.period), complaints: item.value }));
   const severity = (stats?.severity ?? []).map((item, index) => ({ label: severityNames[item.id] ?? item.id, pct: item.percentage ?? 0, color: SEVERITY_COLORS[index % SEVERITY_COLORS.length] }));
   const channelData = (stats?.channels ?? []).map((item) => ({ name: channelNames[item.id] ?? item.id, value: item.percentage ?? 0 }));
-  const retailers = (stats?.retailers ?? []).map((item) => ({ name: item.id, value: item.percentage ?? 0 }));
+  const retailers = (stats?.retailers ?? [])
+    .map((item) => ({ name: item.id, value: item.percentage ?? 0 }))
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 5);
   const totalComplaints = stats?.total_complaints ?? 0;
   const peakItem = monthlyData.reduce((peak, item) => item.complaints > peak.complaints ? item : peak, { month: "—", complaints: 0 });
   const recommendations = useMemo(() => {
