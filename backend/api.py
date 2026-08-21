@@ -18,16 +18,50 @@ app.add_middleware(
 
 @app.get("/")
 def main():
+    """
+    Service identity endpoint.
+
+    Input:  None — no path parameters, query parameters, or request body.
+    Returns: A static JSON object containing the project name and a greeting
+             message, confirming the service is running.
+    Processing: No computation; returns a hard-coded dict immediately.
+    Ownership: API layer (api.py) — service entry point.
+    """
     return {"name": "Legal Loves Tech 2026", "message": "Hello World!"}
 
 
 @app.get("/test_connection")
 def test_connection():
+    """
+    Connectivity diagnostic stub.
+
+    Input:  None — no parameters.
+    Returns: A JSON object with a hard-coded "password" field used during
+             development to verify the service is reachable end-to-end.
+    Processing: No computation; returns a hard-coded dict immediately.
+    Ownership: API layer (api.py) — development/debug utility, not used in
+               production flows.
+    """
     return {"password": "abhschda"}
 
 
 @app.get("/health")
 def health():
+    """
+    Infrastructure health check.
+
+    Input:  None — no parameters.
+    Returns: {"status": "ok", "db": "ok"} when Firestore is reachable and
+             contains at least one complaint document; {"status": "ok",
+             "db": "empty"} when the collection exists but has no documents.
+             Raises HTTP 503 with an error detail dict if the Firestore probe
+             raises any exception.
+    Processing: Issues a single-document .limit(1).stream() probe against the
+                "complaints" Firestore collection. An empty result is treated as
+                a valid (non-error) state; only an exception triggers a 503.
+    Ownership: API layer (api.py) — infrastructure health check, consumed by
+               Cloud Run liveness/readiness probes.
+    """
     try:
         first = next(iter(db.collection("complaints").limit(1).stream()), None)
         db_status = "ok" if first is not None else "empty"
@@ -38,6 +72,24 @@ def health():
 
 @app.get("/descriptive-stats", response_model=DescriptiveStatsResponse)
 def descriptive_stats():
+    """
+    Aggregated complaint statistics endpoint.
+
+    Input:  None — no query or path parameters.
+    Returns: A DescriptiveStatsResponse JSON object containing the timestamp of
+             the last computation, total complaint count, monthly volume series,
+             and percentage breakdowns by severity, channel, and retailer.
+    Processing: Checks the module-level _stats_cache dict against the current
+                Unix timestamp. If a valid cached result exists (within the
+                300-second TTL), it is returned immediately without any I/O. On
+                a cache miss, delegates to _build_stats() from stats.py, which
+                reads Firestore and calls the Gemini LLM; the result is stored
+                in the cache before being returned. Any exception from
+                _build_stats() is caught, logged to stdout, and re-raised as
+                HTTP 500.
+    Ownership: API layer (api.py) — thin cache wrapper; computation lives in
+               stats.py:_build_stats.
+    """
     now = time.time()
     if _stats_cache["stats"] is not None and now < _stats_cache["expires_at"]:
         return _stats_cache["stats"]
@@ -54,6 +106,21 @@ def descriptive_stats():
 
 @app.get("/clusters", response_model=list[ClusterResponse])
 def clusters():
+    """
+    Complaint cluster listing endpoint.
+
+    Input:  None — no query or path parameters.
+    Returns: A list of ClusterResponse objects, each containing an id, title,
+             representative anonymised complaint text, and complaint count for
+             one semantic cluster.
+    Processing: Currently returns six hard-coded ClusterResponse objects as a
+                placeholder. These will be replaced by a live Firestore query
+                against the pre-computed cluster documents produced by the Vertex
+                AI embedding and HDBSCAN clustering pipeline in common.py.
+    Ownership: API layer (api.py) — pending integration with the clustering
+               pipeline (common.py:cluster_complaints /
+               common.py:compile_semantic_averages).
+    """
     # TODO: Replace with a Firestore query for pre-computed clusters produced by the
     # Vertex AI embedding + clustering pipeline. Each document: id, title,
     # representative_text (must be anonymised), count.
@@ -99,6 +166,25 @@ def clusters():
 
 @app.get("/recommendations", response_model=list[RecommendationResponse])
 def recommendations():
+    """
+    LLM-generated policy recommendations endpoint.
+
+    Input:  None — no query or path parameters.
+    Returns: A list of exactly three RecommendationResponse objects, one each
+             for the ids "political", "focus", and "user_warning". Each object
+             contains a short actionable headline (text) and a one-sentence
+             reasoning string (detail).
+    Processing: Checks the module-level _reco_cache dict against the current
+                Unix timestamp. If a valid cached result exists (within the
+                3600-second TTL), it is returned immediately without any I/O. On
+                a cache miss, delegates to build_recommendations() from
+                recommend.py, which reads the Firestore clusters collection and
+                calls the Gemini LLM; the result is stored in the cache before
+                being returned. Any exception is caught, logged to stdout, and
+                re-raised as HTTP 500.
+    Ownership: API layer (api.py) — thin cache wrapper; computation lives in
+               recommend.py:build_recommendations.
+    """
     now = time.time()
     if _reco_cache["recs"] is not None and now < _reco_cache["expires_at"]:
         return _reco_cache["recs"]

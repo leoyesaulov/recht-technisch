@@ -21,6 +21,34 @@ Clusters:
 
 
 def build_recommendations() -> list[RecommendationResponse]:
+    """
+    Generate the three policy recommendations from the current cluster corpus
+    using the Gemini LLM.
+
+    Input:  None — reads from the module-level Firestore client (db) imported
+            from shared.py.
+    Returns: A list of exactly three RecommendationResponse objects in the
+             fixed order ["political", "focus", "user_warning"]. Each object
+             contains:
+               id     — one of the three literal strings above
+               text   — a short actionable headline (≤ 80 characters)
+               detail — a single sentence of reasoning (≤ 200 characters)
+    Processing:
+      1. Streams all documents from the Firestore "clusters" collection.
+      2. For each document, extracts cluster_size, cluster_title, and
+         cluster_body; documents missing a title or body are silently skipped.
+      3. Formats the retained clusters as a bullet list ("- Title (N
+         complaints): body") and injects it into _PROMPT. If no clusters pass
+         the filter, the placeholder string "(no clusters available)" is used
+         so the LLM still returns a valid JSON object.
+      4. Calls gemini-2.5-flash via the Vertex AI endpoint (project
+         "recht-technisch", region "europe-west1") with JSON response mode to
+         obtain a single JSON object keyed by the three recommendation ids.
+      5. Parses the JSON response and constructs one RecommendationResponse
+         per id, unpacking "text" and "detail" from the parsed dict.
+    Ownership: recommend.py — sole LLM call site for recommendations;
+               called by api.py:recommendations on each cache miss.
+    """
     cluster_docs = list(db.collection("clusters").stream())
     rows = []
     for doc in cluster_docs:
