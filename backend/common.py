@@ -35,6 +35,8 @@ from math import ceil
 from typing import Any
 from datetime import date
 
+from shared import db
+
 from sklearn.cluster import HDBSCAN
 
 from google import genai
@@ -50,12 +52,10 @@ from google.adk.sessions import VertexAiSessionService
 
 def ingest_data() -> None:
     """Import the complaints into the Firestore"""
-    db = None
     genai_client = None
 
     try:
         # ADC automatically picks up the Cloud Run service account credentials.
-        db = firestore.Client(project="recht-technisch")
         complaints = db.collection("complaints")
         # TODO: figure out raw complaints
         raw_complaints: list[Any] = []
@@ -144,8 +144,6 @@ def ingest_data() -> None:
     finally:
         if genai_client is not None:
             genai_client.close()
-        if db is not None:
-            db.close()
 
     return None
 
@@ -154,9 +152,7 @@ def cluster_complaints(min_samples: int = 10, min_cluster_size: int = 30) -> Non
     """
     Query complaints stored in Firestore and insert labels to documents and clusters back into Firestore
     """
-    db = None
     try:
-        db = firestore.Client(project="recht-technisch")
         complaints = db.collection("complaints")
         documents = list(complaints.select(["embedding"]).stream())
 
@@ -215,7 +211,6 @@ def _init_agent() -> str:
     project = "recht-technisch"
     location = "europe-west1"
     app_name = "complaint_cluster_compiler"
-    db = firestore.Client(project=project)
 
     try:
         agent_document = db.collection("meta").document("agent")
@@ -254,9 +249,7 @@ def compile_semantic_averages() -> None:
     """
     agent_engine_id = _init_agent()
 
-    db = None
     try:
-        db = firestore.Client(project="recht-technisch")
         clusters = db.collection("clusters")
         complaints = db.collection("complaints")
         sessions = VertexAiSessionService(
@@ -360,8 +353,7 @@ def compile_semantic_averages() -> None:
             if not stored_cluster.get("cluster_title") or not stored_cluster.get("cluster_body"):
                 raise RuntimeError(f"Agent did not provide both fields for cluster {label}")
     finally:
-        if db is not None:
-            db.close()
+        pass
 
     return None
 

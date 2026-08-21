@@ -3,7 +3,6 @@ from pydantic import BaseModel
 from google.cloud import firestore
 
 db = firestore.Client(project="recht-technisch", database="complaints")
-docs = list(db.collection("complaints").stream())
 
 class MonthlyVolume(BaseModel):
     period: str  # "YYYY-MM"

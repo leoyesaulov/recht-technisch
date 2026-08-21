@@ -1,6 +1,6 @@
 import time
 import uvicorn
-from google.cloud import firestore
+from shared import db
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from shared import DescriptiveStatsResponse, ClusterResponse, RecommendationResponse
@@ -28,7 +28,6 @@ def test_connection():
 @app.get("/health")
 def health():
     try:
-        db = firestore.Client(project="recht-technisch", database="complaints")
         first = next(iter(db.collection("complaints").limit(1).stream()), None)
         db_status = "ok" if first is not None else "empty"
     except Exception as exc:

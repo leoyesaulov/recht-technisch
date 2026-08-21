@@ -1,7 +1,7 @@
 import json
+from shared import db
 from google import genai
 from google.genai import types
-from google.cloud import firestore
 from collections import defaultdict
 from datetime import datetime, timezone
 from shared import DescriptiveStatsResponse, MonthlyVolume, StatItem
@@ -64,7 +64,6 @@ def _classify_batch(client, batch: list[dict]) -> list[dict]:
 
 
 def _build_stats() -> DescriptiveStatsResponse:
-    db = firestore.Client(project="recht-technisch", database="complaints")
     docs = list(db.collection("complaints").stream())
 
     complaints = [
