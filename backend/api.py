@@ -130,9 +130,8 @@ def _classify_batch(client, batch: list[dict]) -> list[dict]:
 
 
 def _build_stats() -> DescriptiveStatsResponse:
-
     print("DEBUG _build_stats: connecting to Firestore")
-    db = firestore.Client(project="recht-technisch")
+    db = firestore.Client(project="recht-technisch", database="complaints")
     docs = list(db.collection("complaints").stream())
     print(f"DEBUG _build_stats: fetched {len(docs)} docs from Firestore")
 
