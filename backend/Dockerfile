@@ -7,8 +7,10 @@ ENV PATH="${POETRY_HOME}/bin:${PATH}"
 
 RUN python3 -c "import urllib.request; exec(urllib.request.urlopen('https://install.python-poetry.org').read())"
 
-COPY . .
+COPY poetry.lock pyproject.toml ./
 RUN poetry install
+
+COPY . .
 
 EXPOSE 8080
 
