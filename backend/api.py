@@ -7,8 +7,6 @@ from shared import DescriptiveStatsResponse, ClusterResponse, RecommendationResp
 from stats import _build_stats, _stats_cache, _CACHE_TTL
 from recommend import build_recommendations, _reco_cache, _RECO_TTL
 
-from common import cluster_complaints
-
 app = FastAPI(title="Recht Technisch API", version="0.1.0")
 
 app.add_middleware(
@@ -105,10 +103,9 @@ def clusters():
                 cluster documents from Firestore and maps their canonical fields
                 to the public response contract.
     Ownership: API layer (api.py) — pending integration with the clustering
-               pipeline (common.py:cluster_complaints /
-               common.py:compile_semantic_averages).
+               pipeline (cluster.py:cluster_complaints /
+               cluster.py:compile_semantic_averages).
     """
-    from common import cluster_complaints
     # TODO, get caching behaviour
     # cluster_complaints()
 
