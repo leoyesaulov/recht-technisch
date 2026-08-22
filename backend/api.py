@@ -16,6 +16,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 @app.get("/")
 def main():
     """
@@ -28,21 +29,6 @@ def main():
     Ownership: API layer (api.py) — service entry point.
     """
     return {"name": "Legal Loves Tech 2026", "message": "Hello World!"}
-
-
-@app.get("/test_connection")
-def test_connection():
-    """
-    Connectivity diagnostic stub.
-
-    Input:  None — no parameters.
-    Returns: A JSON object with a hard-coded "password" field used during
-             development to verify the service is reachable end-to-end.
-    Processing: No computation; returns a hard-coded dict immediately.
-    Ownership: API layer (api.py) — development/debug utility, not used in
-               production flows.
-    """
-    return {"password": "abhschda"}
 
 
 @app.get("/health")
@@ -113,54 +99,25 @@ def clusters():
     Returns: A list of ClusterResponse objects, each containing an id, title,
              representative anonymised complaint text, and complaint count for
              one semantic cluster.
-    Processing: Currently returns six hard-coded ClusterResponse objects as a
-                placeholder. These will be replaced by a live Firestore query
-                against the pre-computed cluster documents produced by the Vertex
-                AI embedding and HDBSCAN clustering pipeline in common.py.
+    Processing: Recomputes the complaint clusters, then reads the resulting
+                cluster documents from Firestore and maps their canonical fields
+                to the public response contract.
     Ownership: API layer (api.py) — pending integration with the clustering
-               pipeline (common.py:cluster_complaints /
-               common.py:compile_semantic_averages).
+               pipeline (cluster.py:cluster_complaints /
+               cluster.py:compile_semantic_averages).
     """
-    # TODO: Replace with a Firestore query for pre-computed clusters produced by the
-    # Vertex AI embedding + clustering pipeline. Each document: id, title,
-    # representative_text (must be anonymised), count.
+    # TODO, get caching behaviour
+    # cluster_complaints()
+
+    cluster_docs = db.collection("clusters").stream()
     return [
         ClusterResponse(
-            id="delivery_delays",
-            title="Delivery Delays",
-            text="I ordered a package two weeks ago and it still hasn't arrived. The tracking hasn't updated in five days and customer service told me to wait.",
-            count=847,
-        ),
-        ClusterResponse(
-            id="product_quality",
-            title="Product Quality",
-            text="The item I received was clearly damaged in the box. The screen was cracked and the packaging looked like it had been opened before.",
-            count=612,
-        ),
-        ClusterResponse(
-            id="customer_service",
-            title="Customer Service",
-            text="I tried to reach support three times by phone and each time was put on hold for over 45 minutes before being disconnected.",
-            count=534,
-        ),
-        ClusterResponse(
-            id="billing_issues",
-            title="Billing Issues",
-            text="I was charged twice for the same order. Despite raising this a week ago, the duplicate charge has not been refunded.",
-            count=389,
-        ),
-        ClusterResponse(
-            id="return_process",
-            title="Return Process",
-            text="I requested a return three weeks ago and still haven't received the return label. The product is sitting in my hallway.",
-            count=298,
-        ),
-        ClusterResponse(
-            id="app_web_bugs",
-            title="App & Website Bugs",
-            text="The checkout process fails at the payment step every time I try on the mobile app. I have to use a different device just to complete an order.",
-            count=271,
-        ),
+            id=str(cluster.get("cluster_label")),
+            title=cluster.get("cluster_title"),
+            text=cluster.get("cluster_body"),
+            count=cluster.get("cluster_size"),
+        )
+        for cluster in cluster_docs
     ]
 
 
