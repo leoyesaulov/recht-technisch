@@ -14,6 +14,7 @@ Team `Recht Technisch`'s pilot project at Legal Loves Tech Hackathon 2026
 - There will be no stage / test / local environment. Everything will run in prod to reduce development compexity.
 - Each complaint is forcefully assigned to a singular cluster. Reason: simplify clustering
 - Noise clusters are intentionally dropped.
+- There is virtually no protection against prompt injection.
 
 ### Architecture
 
