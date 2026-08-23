@@ -78,9 +78,27 @@ function SectionLabel({ children }: { children: string }) {
 }
 
 function SectionStatus({ error }: { error?: string }) {
+  if (!error) {
+    return (
+      <div
+        role="status"
+        aria-label="Loading"
+        aria-live="polite"
+        style={{
+          minHeight: "120px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <span className="loading-spinner" aria-hidden="true" />
+      </div>
+    );
+  }
+
   return (
     <p style={{ color: error ? RED : MUTED_TX, fontFamily: FBODY, fontSize: "13px" }}>
-      {error ?? "Loading…"}
+      {error}
     </p>
   );
 }
@@ -238,9 +256,8 @@ export default function App() {
           <SectionLabel>SECTION 1 OF 3</SectionLabel>
         </div>
 
-        {sectionErrors.stats && <SectionStatus error={sectionErrors.stats} />}
-
-        {/* Row: time-series chart + 3 stat tiles */}
+        {sectionErrors.stats ? <SectionStatus error={sectionErrors.stats} /> : !stats ? <SectionStatus /> : (
+        /* Row: time-series chart + 3 stat tiles */
         <div
           style={{
             display: "grid",
@@ -491,6 +508,7 @@ export default function App() {
             </div>
           </div>
         </div>
+        )}
       </section>
 
       {/* ══════════════════════════════════════════════════════════════════
@@ -531,8 +549,7 @@ export default function App() {
           </span>
         </div>
 
-        {sectionErrors.clusters && <SectionStatus error={sectionErrors.clusters} />}
-
+        {sectionErrors.clusters ? <SectionStatus error={sectionErrors.clusters} /> : !clusters ? <SectionStatus /> : (
         <div
           style={{
             display: "grid",
@@ -540,7 +557,7 @@ export default function App() {
             gap: "16px",
           }}
         >
-          {(clusters ?? []).map((c, index) => {
+          {clusters.map((c, index) => {
             const isHov = hovered === index;
             const ClusterIcon = clusterIcons[c.id] ?? Clock;
             return (
@@ -667,6 +684,7 @@ export default function App() {
             );
           })}
         </div>
+        )}
       </section>
 
       {/* ══════════════════════════════════════════════════════════════════
@@ -689,8 +707,7 @@ export default function App() {
           <SectionLabel>SECTION 3 OF 3 · AI-GENERATED · {recommendations.length} DIMENSIONS</SectionLabel>
         </div>
 
-        {sectionErrors.recommendations && <SectionStatus error={sectionErrors.recommendations} />}
-
+        {sectionErrors.recommendations ? <SectionStatus error={sectionErrors.recommendations} /> : !recommendationItems ? <SectionStatus /> : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "20px" }}>
           {recommendations.map((rec) => (
             <div
@@ -773,6 +790,7 @@ export default function App() {
             </div>
           ))}
         </div>
+        )}
       </section>
 
       {/* Footer */}
