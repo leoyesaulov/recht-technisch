@@ -103,46 +103,64 @@ def _classify_batch(client, batch: list[dict]) -> list[dict]:
 
 
 def _build_stats() -> DescriptiveStatsResponse:
-    """
-    Build the full descriptive statistics response from the complaints corpus.
-
-    Input:  None — reads from the module-level Firestore client (db) imported
-            from shared.py.
-    Returns: A DescriptiveStatsResponse containing:
-               updated_at      — ISO 8601 UTC timestamp of this computation
-               total_complaints — total number of complaint documents
-               monthly_volume  — contiguous list of MonthlyVolume objects from
-                                 the earliest complaint month to the present
-               severity        — list of StatItems for critical/high/medium/low
-               channels        — list of StatItems for online/in_person
-               retailers       — list of StatItems sorted by complaint count
-                                 descending
-    Processing:
-      1. Streams all documents from the Firestore "complaints" collection.
-      2. Aggregates monthly complaint counts from each document's date_created
-         field (YYYY-MM-DD prefix); fills gaps to the current month using
-         _month_range so the series is contiguous.
-      3. Sends complaint bodies to the Gemini LLM in batches of 50 via
-         _classify_batch to obtain severity, channel, and retailer labels.
-      4. Tallies per-category counts; computes percentages against total
-         (floored to 1 to avoid division by zero).
-      5. Assembles and returns the DescriptiveStatsResponse.
-    Ownership: stats.py — primary orchestrator for statistics computation;
-               called by api.py:descriptive_stats on each cache miss.
-    """
     docs = list(db.collection("complaints").stream())
-
-    complaints = [
-        {"date_created": d.get("date_created"), "body": d.get("body") or ""}
-        for d in docs
-    ]
-    total = len(complaints)
+    total = len(docs)
     now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    records: list[dict] = []
+    unclassified_idx: list[int] = []
+
+    for d in docs:
+        data = d.to_dict() or {}
+        sev = data.get("severity")
+        ch = data.get("channel")
+        ret = data.get("retailer")
+        classified = sev in _SEV_ORDER and ch in _CH_ORDER and ret is not None
+        records.append({
+            "date_created": data.get("date_created"),
+            "body": data.get("body") or "",
+            "severity": sev if classified else None,
+            "channel": ch if classified else None,
+            "retailer": ret if classified else None,
+            "ref": d.reference,
+        })
+        if not classified:
+            unclassified_idx.append(len(records) - 1)
+
+    if unclassified_idx:
+        genai_client = genai.Client(vertexai=True, project="recht-technisch", location="europe-west1")
+        bodies = [{"body": records[i]["body"]} for i in unclassified_idx]
+        new_cls: list[dict] = []
+        for i in range(0, len(bodies), 50):
+            new_cls.extend(_classify_batch(genai_client, bodies[i : i + 50]))
+
+        batch = db.batch()
+        ops = 0
+        for doc_idx, cls in zip(unclassified_idx, new_cls):
+            records[doc_idx].update(cls)
+            batch.update(records[doc_idx]["ref"], cls)
+            ops += 1
+            if ops == 500:
+                batch.commit()
+                batch = db.batch()
+                ops = 0
+        if ops:
+            batch.commit()
+
+    # Fill defaults for any records still missing valid classifications
+    # (LLM returned fewer items than the batch, or Firestore fields were absent)
+    for r in records:
+        if r["severity"] not in _SEV_ORDER:
+            r["severity"] = "low"
+        if r["channel"] not in _CH_ORDER:
+            r["channel"] = "online"
+        if not r["retailer"]:
+            r["retailer"] = "unknown"
 
     # Monthly volume from date_created (no AI needed)
     month_counts: dict[str, int] = defaultdict(int)
-    for c in complaints:
-        dc = c["date_created"]
+    for r in records:
+        dc = r["date_created"]
         if dc and len(dc) >= 7:
             month_counts[dc[:7]] += 1
 
@@ -154,19 +172,13 @@ def _build_stats() -> DescriptiveStatsResponse:
         periods = []
     monthly_volume = [MonthlyVolume(period=p, value=month_counts.get(p, 0)) for p in periods]
 
-    # AI classification for severity / channel / retailer
-    genai_client = genai.Client(vertexai=True, project="recht-technisch", location="europe-west1")
-    classifications: list[dict] = []
-    for i in range(0, total, 50):
-        classifications.extend(_classify_batch(genai_client, complaints[i : i + 50]))
-
     sev_counts: dict[str, int] = defaultdict(int)
     ch_counts: dict[str, int] = defaultdict(int)
     ret_counts: dict[str, int] = defaultdict(int)
-    for cls in classifications:
-        sev_counts[cls["severity"]] += 1
-        ch_counts[cls["channel"]] += 1
-        ret_counts[cls["retailer"]] += 1
+    for r in records:
+        sev_counts[r["severity"]] += 1
+        ch_counts[r["channel"]] += 1
+        ret_counts[r["retailer"]] += 1
 
     safe_total = max(total, 1)
 
