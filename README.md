@@ -51,8 +51,10 @@ Dependency installation is required to run the project.
 - Run
 
 ```
-  docker build -t complaints-dashboard . && \ 
-  docker run --rm --network host -v ~/.config/gcloud:/root/.config/gcloud:ro complaints-dashboard
+docker build -t complaints-dashboard . && \
+    docker run --rm -p 3000:3000 \
+      -v ~/.config/gcloud:/root/.config/gcloud:ro \
+      complaints-dashboard
 ```
 
 The volume mount is needed to access google's credentials within the container
