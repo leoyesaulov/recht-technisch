@@ -2,6 +2,30 @@
 @import './tailwind.css';
 @import './theme.css';
 
+.impressum-markdown {
+  color: #1a1a1a;
+  font-family: "Inter", sans-serif;
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.impressum-markdown > :first-child { margin-top: 0; }
+
+.impressum-markdown h1,
+.impressum-markdown h2,
+.impressum-markdown h3 {
+  font-family: "Barlow Condensed", sans-serif;
+  letter-spacing: 0.03em;
+  line-height: 1.1;
+  margin: 1.4em 0 0.45em;
+}
+
+.impressum-markdown p,
+.impressum-markdown ul,
+.impressum-markdown ol { margin: 0 0 1em; }
+
+.impressum-markdown a { color: #c8102e; }
+
 @keyframes loading-spinner-rotate {
   to {
     transform: rotate(360deg);

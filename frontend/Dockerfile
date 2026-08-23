@@ -19,6 +19,7 @@ RUN npm install --omit=dev --no-audit --no-fund
 
 COPY server.js ./
 COPY --from=build /app/dist ./dist
+COPY --from=build /app/IMPRESSUM.md ./dist/IMPRESSUM.md
 
 EXPOSE 3000
 

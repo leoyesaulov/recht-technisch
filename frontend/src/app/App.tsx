@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import ReactMarkdown from "react-markdown";
 import {
   AreaChart,
   Area,
@@ -58,6 +59,52 @@ const recommendationGroups = {
 
 function monthLabel(value: string) {
   return value.includes("-") ? new Date(`${value}-01T00:00:00Z`).toLocaleDateString("de-DE", { month: "short", timeZone: "UTC" }) : value;
+}
+
+function ImpressumDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [markdown, setMarkdown] = useState<string>();
+  const [error, setError] = useState<string>();
+
+  useEffect(() => {
+    if (!open || markdown) return;
+
+    const controller = new AbortController();
+    fetch("/IMPRESSUM.md", { signal: controller.signal })
+      .then((response) => {
+        if (!response.ok) throw new Error("Impressum konnte nicht geladen werden.");
+        return response.text();
+      })
+      .then(setMarkdown)
+      .catch((err: unknown) => {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        setError("Impressum konnte nicht geladen werden.");
+      });
+
+    return () => controller.abort();
+  }, [open, markdown]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  return (
+    <div role="presentation" onMouseDown={onClose} style={{ position: "fixed", inset: 0, zIndex: 50, padding: "24px", background: "rgba(26,26,26,0.5)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <section role="dialog" aria-modal="true" aria-labelledby="impressum-title" onMouseDown={(event) => event.stopPropagation()} style={{ width: "min(680px, 100%)", maxHeight: "min(80vh, 720px)", overflowY: "auto", background: WARM, border: `1px solid ${RULE}`, boxShadow: "0 20px 60px rgba(0,0,0,0.25)", padding: "28px 32px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "16px", marginBottom: "20px" }}>
+          <h2 id="impressum-title" style={{ margin: 0, fontFamily: FDISPLAY, fontSize: "24px", letterSpacing: "0.04em", color: INK }}>IMPRESSUM</h2>
+          <button type="button" onClick={onClose} aria-label="Impressum schließen" style={{ border: 0, background: "transparent", color: INK, cursor: "pointer", fontFamily: FMONO, fontSize: "12px", padding: "6px" }}>SCHLIESSEN ×</button>
+        </div>
+        {error ? <p style={{ color: RED, fontFamily: FBODY, fontSize: "14px" }}>{error}</p> : !markdown ? <SectionStatus /> : <div className="impressum-markdown"><ReactMarkdown>{markdown}</ReactMarkdown></div>}
+      </section>
+    </div>
+  );
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -126,6 +173,7 @@ function CustomTooltip({ active, payload, label }: any) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 export default function App() {
+  const [isImpressumOpen, setIsImpressumOpen] = useState(false);
   const [hovered, setHovered] = useState<number | null>(null);
   const [stats, setStats] = useState<DescriptiveStats | null>(null);
   const [clusters, setClusters] = useState<Cluster[] | null>(null);
@@ -793,10 +841,18 @@ export default function App() {
         <span style={{ fontFamily: FDISPLAY, fontSize: "10px", letterSpacing: "0.1em", color: MUTED_TX }}>
           VERBRAUCHERZENTRALE BAYERN · BESCHWERDEANALYSE
         </span>
+        <button
+          type="button"
+          onClick={() => setIsImpressumOpen(true)}
+          style={{ border: 0, padding: 0, background: "transparent", color: INK, cursor: "pointer", fontFamily: FMONO, fontSize: "10px", textDecoration: "underline", textUnderlineOffset: "3px" }}
+        >
+          IMPRESSUM
+        </button>
         <span style={{ fontFamily: FMONO, fontSize: "10px", color: MUTED_TX }}>
           Aktualisiert: {stats ? new Date(stats.updated_at).toLocaleString("de-DE") : "—"}
         </span>
       </footer>
+      <ImpressumDialog open={isImpressumOpen} onClose={() => setIsImpressumOpen(false)} />
     </div>
   );
 }
