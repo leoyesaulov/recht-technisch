@@ -34,7 +34,7 @@ async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, { signal });
   if (!response.ok) {
     const error = await response.json().catch(() => null);
-    throw new Error(error?.error ?? "Could not load this dashboard section.");
+    throw new Error(error?.error ?? "Dieser Bereich des Dashboards konnte nicht geladen werden.");
   }
   return response.json();
 }

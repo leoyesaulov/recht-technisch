@@ -70,7 +70,7 @@ app.use("/api", async (req, res) => {
     }
   } catch (err) {
     console.error("Failed to proxy request to backend:", err);
-    res.status(502).json({ error: "Could not reach the backend service." });
+    res.status(502).json({ error: "Der Backend-Dienst konnte nicht erreicht werden." });
   }
 });
 

@@ -48,16 +48,16 @@ const clusterIcons: Record<string, typeof Clock> = {
   app_web_bugs: Smartphone,
   return_process: RotateCcw,
 };
-const severityNames: Record<string, string> = { critical: "Critical", high: "High", medium: "Medium", low: "Low" };
-const channelNames: Record<string, string> = { online: "Online", in_person: "In-person" };
+const severityNames: Record<string, string> = { critical: "Kritisch", high: "Hoch", medium: "Mittel", low: "Niedrig" };
+const channelNames: Record<string, string> = { online: "Online", in_person: "Vor Ort" };
 const recommendationGroups = {
-  political: { label: "POLITICAL ACTION", Icon: Landmark, color: RED, bg: "rgba(200,16,46,0.07)" },
-  focus: { label: "VERBRAUCHERZENTRALE FOCUS", Icon: Search, color: INK, bg: "rgba(26,26,26,0.06)" },
-  user_warning: { label: "USER WARNING", Icon: Megaphone, color: "#7A5C1E", bg: "rgba(196,151,58,0.09)" },
+  political: { label: "POLITISCHE MASSNAHMEN", Icon: Landmark, color: RED, bg: "rgba(200,16,46,0.07)" },
+  focus: { label: "FOKUS VERBRAUCHERZENTRALE", Icon: Search, color: INK, bg: "rgba(26,26,26,0.06)" },
+  user_warning: { label: "WARNUNG FÜR VERBRAUCHER", Icon: Megaphone, color: "#7A5C1E", bg: "rgba(196,151,58,0.09)" },
 };
 
 function monthLabel(value: string) {
-  return value.includes("-") ? new Date(`${value}-01T00:00:00Z`).toLocaleDateString("en", { month: "short", timeZone: "UTC" }) : value;
+  return value.includes("-") ? new Date(`${value}-01T00:00:00Z`).toLocaleDateString("de-DE", { month: "short", timeZone: "UTC" }) : value;
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -82,7 +82,7 @@ function SectionStatus({ error }: { error?: string }) {
     return (
       <div
         role="status"
-        aria-label="Loading"
+        aria-label="Wird geladen"
         aria-live="polite"
         style={{
           minHeight: "120px",
@@ -119,7 +119,7 @@ function CustomTooltip({ active, payload, label }: any) {
       <div style={{ color: MUTED_TX, marginBottom: 2, fontFamily: FDISPLAY, letterSpacing: "0.08em", fontSize: "10px" }}>
         {label}
       </div>
-      <div>{payload[0].value} complaints</div>
+      <div>{payload[0].value} Beschwerden</div>
     </div>
   );
 }
@@ -213,26 +213,13 @@ export default function App() {
               marginLeft: "4px",
             }}
           >
-            · COMPLAINT INTELLIGENCE
+            · BESCHWERDEANALYSE
           </span>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "24px" }}>
+        <div style={{ display: "flex", alignItems: "center" }}>
           <span style={{ fontFamily: FMONO, fontSize: "11px", color: MUTED_TX }}>
-            {totalComplaints.toLocaleString()} complaints logged
+            {totalComplaints.toLocaleString("de-DE")} erfasste Beschwerden
           </span>
-          <div
-            style={{
-              background: RED,
-              color: "#fff",
-              fontFamily: FDISPLAY,
-              fontSize: "10px",
-              letterSpacing: "0.1em",
-              padding: "3px 9px",
-              borderRadius: "2px",
-            }}
-          >
-            LIVE
-          </div>
         </div>
       </header>
 
@@ -251,9 +238,9 @@ export default function App() {
               margin: 0,
             }}
           >
-            DESCRIPTIVE OVERVIEW
+            ÜBERBLICK
           </h2>
-          <SectionLabel>SECTION 1 OF 3</SectionLabel>
+          <SectionLabel>ABSCHNITT 1 VON 3</SectionLabel>
         </div>
 
         {sectionErrors.stats ? <SectionStatus error={sectionErrors.stats} /> : !stats ? <SectionStatus /> : (
@@ -276,13 +263,13 @@ export default function App() {
                 marginBottom: "10px",
               }}
             >
-              <SectionLabel>MONTHLY COMPLAINT VOLUME · LAST 12 MONTHS</SectionLabel>
+              <SectionLabel>MONATLICHES BESCHWERDEAUFKOMMEN · LETZTE 12 MONATE</SectionLabel>
               <div style={{ display: "flex", gap: "16px" }}>
                 <span style={{ fontFamily: FMONO, fontSize: "11px", color: MUTED_TX }}>
-                  Peak: <span style={{ color: RED }}>{peakItem.complaints}</span> ({peakItem.month})
+                  Höchstwert: <span style={{ color: RED }}>{peakItem.complaints}</span> ({peakItem.month})
                 </span>
                 <span style={{ fontFamily: FMONO, fontSize: "11px", color: MUTED_TX }}>
-                  Total: <span style={{ color: INK, fontWeight: 500 }}>{totalComplaints.toLocaleString()}</span>
+                  Gesamt: <span style={{ color: INK, fontWeight: 500 }}>{totalComplaints.toLocaleString("de-DE")}</span>
                 </span>
               </div>
             </div>
@@ -316,7 +303,7 @@ export default function App() {
                     width={36}
                     tickFormatter={(v) => `${v}`}
                     label={{
-                      value: "complaints",
+                      value: "Beschwerden",
                       angle: -90,
                       position: "insideLeft",
                       offset: 12,
@@ -352,7 +339,7 @@ export default function App() {
               padding: "16px",
             }}
           >
-            <SectionLabel>SEVERITY BREAKDOWN</SectionLabel>
+            <SectionLabel>DRINGLICHKEITSSTUFEN</SectionLabel>
             <div
               style={{
                 display: "flex",
@@ -406,7 +393,7 @@ export default function App() {
               padding: "16px",
             }}
           >
-            <SectionLabel>CHANNEL SPLIT</SectionLabel>
+            <SectionLabel>VERTEILUNG NACH KANAL</SectionLabel>
             <div
               style={{ display: "flex", justifyContent: "center", margin: "8px 0 12px" }}
             >
@@ -468,7 +455,7 @@ export default function App() {
               padding: "16px",
             }}
           >
-            <SectionLabel>TOP RETAILERS BY VOLUME</SectionLabel>
+            <SectionLabel>HÄNDLER MIT DEN MEISTEN BESCHWERDEN</SectionLabel>
             <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginTop: "14px" }}>
               {retailers.map((r) => (
                 <div key={r.name}>
@@ -533,9 +520,9 @@ export default function App() {
                 margin: 0,
               }}
             >
-              COMPLAINT CLUSTERS
+              BESCHWERDECLUSTER
             </h2>
-            <SectionLabel>SECTION 2 OF 3 · {clusters?.length ?? 0} ACTIVE CLUSTERS</SectionLabel>
+            <SectionLabel>ABSCHNITT 2 VON 3 · {clusters?.length ?? 0} AKTIVE CLUSTER</SectionLabel>
           </div>
           <span
             style={{
@@ -545,7 +532,7 @@ export default function App() {
               fontStyle: "italic",
             }}
           >
-            Hover a card to see cluster size
+            Bewegen Sie den Mauszeiger über eine Karte, um die Clustergröße zu sehen
           </span>
         </div>
 
@@ -590,7 +577,7 @@ export default function App() {
                         whiteSpace: "nowrap",
                       }}
                     >
-                      {(c.count ?? 0).toLocaleString()} complaints in this cluster
+                      {(c.count ?? 0).toLocaleString("de-DE")} Beschwerden in diesem Cluster
                     </div>
                     <div
                       style={{
@@ -676,7 +663,7 @@ export default function App() {
                     <span
                       style={{ fontFamily: FMONO, fontSize: "9px", color: MUTED_TX }}
                     >
-                      Representative sample
+                      Repräsentatives Beispiel
                     </span>
                   </div>
                 </div>
@@ -702,9 +689,9 @@ export default function App() {
               margin: 0,
             }}
           >
-            ACTIONABLE RECOMMENDATIONS
+            KONKRETE EMPFEHLUNGEN
           </h2>
-          <SectionLabel>SECTION 3 OF 3 · AI-GENERATED · {recommendations.length} DIMENSIONS</SectionLabel>
+          <SectionLabel>ABSCHNITT 3 VON 3 · KI-GENERIERT · {recommendations.length} DIMENSIONEN</SectionLabel>
         </div>
 
         {sectionErrors.recommendations ? <SectionStatus error={sectionErrors.recommendations} /> : !recommendationItems ? <SectionStatus /> : (
@@ -804,10 +791,10 @@ export default function App() {
         }}
       >
         <span style={{ fontFamily: FDISPLAY, fontSize: "10px", letterSpacing: "0.1em", color: MUTED_TX }}>
-          VERBRAUCHERZENTRALE BAYERN · COMPLAINT ANALYTICS
+          VERBRAUCHERZENTRALE BAYERN · BESCHWERDEANALYSE
         </span>
         <span style={{ fontFamily: FMONO, fontSize: "10px", color: MUTED_TX }}>
-          Updated {stats ? new Date(stats.updated_at).toLocaleString() : "—"}
+          Aktualisiert: {stats ? new Date(stats.updated_at).toLocaleString("de-DE") : "—"}
         </span>
       </footer>
     </div>
