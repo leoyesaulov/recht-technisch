@@ -1,18 +1,25 @@
 import time
+import csv
+import io
 import uvicorn
 from shared import db
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from shared import MonthlyVolumeResponse, ChartsStatsResponse, ClusterResponse, RecommendationResponse
+from fastapi.responses import JSONResponse
+from shared import MonthlyVolumeResponse, ChartsStatsResponse, ClusterResponse, RecommendationResponse, IngestionResponse
 from stats import build_monthly_volume, build_charts_stats, _monthly_cache, _charts_cache, _CACHE_TTL
 from recommend import build_recommendations, _reco_cache, _RECO_TTL
+from data_ingestion import ingest_data
+
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+REQUIRED_CSV_COLUMNS = ["date_created", "complaint"]
 
 app = FastAPI(title="Recht Technisch API", version="0.1.0")
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000", "http://localhost:5173"],
-    allow_methods=["GET"],
+    allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
 
@@ -54,6 +61,44 @@ def health():
     except Exception as exc:
         raise HTTPException(status_code=503, detail={"status": "error", "db": str(exc)})
     return {"status": "ok", "db": db_status}
+
+
+@app.post("/ingestion", response_model=IngestionResponse, status_code=201)
+async def ingestion(file: UploadFile | None = File(None)):
+    """Ingest a UTF-8 CSV with exactly ``date_created,complaint`` columns."""
+    if file is None or not file.filename or not file.filename.lower().endswith(".csv"):
+        return JSONResponse(status_code=400, content={"error": "Please upload a .csv file."})
+
+    content = await file.read(MAX_UPLOAD_BYTES + 1)
+    if len(content) > MAX_UPLOAD_BYTES:
+        return JSONResponse(status_code=400, content={"error": "The CSV file must not exceed 10 MB."})
+
+    try:
+        decoded = content.decode("utf-8-sig")
+        reader = csv.DictReader(io.StringIO(decoded))
+        if reader.fieldnames != REQUIRED_CSV_COLUMNS:
+            raise ValueError("CSV columns must be exactly date_created and complaint.")
+        rows = list(reader)
+    except (UnicodeDecodeError, csv.Error, ValueError) as exc:
+        return JSONResponse(status_code=400, content={"error": str(exc)})
+
+    if not rows:
+        return JSONResponse(status_code=400, content={"error": "The CSV file must contain at least one complaint."})
+
+    try:
+        inserted = ingest_data(rows)
+    except ValueError as exc:
+        return JSONResponse(status_code=400, content={"error": str(exc)})
+    except Exception as exc:
+        import traceback
+        print(f"ERROR ingestion: {exc}\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail="Something went wrong.") from exc
+
+    # All dashboard aggregates are derived from complaints and must be rebuilt.
+    for cache in (_monthly_cache, _charts_cache, _reco_cache):
+        cache["data" if "data" in cache else "recs"] = None
+        cache["expires_at"] = 0
+    return IngestionResponse(inserted=inserted)
 
 
 @app.get("/descriptive-stats/monthly-volume", response_model=MonthlyVolumeResponse)
@@ -182,4 +227,5 @@ def recommendations():
     return result
 
 
-uvicorn.run(app, host="0.0.0.0", port=8080)
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8080)

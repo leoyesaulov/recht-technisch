@@ -39,3 +39,7 @@ class RecommendationResponse(BaseModel):
     id: Literal["political", "focus", "user_warning"]
     text: str
     detail: str
+
+
+class IngestionResponse(BaseModel):
+    inserted: int

@@ -38,7 +38,20 @@ async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, { signal });
   if (!response.ok) {
     const error = await response.json().catch(() => null);
-    throw new Error(error?.error ?? "Dieser Bereich des Dashboards konnte nicht geladen werden.");
+    throw new Error(error?.error ?? error?.detail ?? "Dieser Bereich des Dashboards konnte nicht geladen werden.");
+  }
+  return response.json();
+}
+
+export type IngestionResult = { inserted: number };
+
+export async function uploadComplaints(file: File, signal?: AbortSignal): Promise<IngestionResult> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const response = await fetch(`${API_BASE_URL}/ingestion`, { method: "POST", body: formData, signal });
+  if (!response.ok) {
+    const error = await response.json().catch(() => null);
+    throw new Error(error?.error ?? error?.detail ?? "Die Datei konnte nicht verarbeitet werden.");
   }
   return response.json();
 }
