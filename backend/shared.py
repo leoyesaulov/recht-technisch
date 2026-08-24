@@ -35,6 +35,14 @@ class ClusterResponse(BaseModel):
     count: int
 
 
+class ComplaintResponse(BaseModel):
+    """A complaint shown in the detail view for a single cluster."""
+
+    id: str
+    date_created: str  # "YYYY-MM-DD"
+    body: str
+
+
 class RecommendationResponse(BaseModel):
     id: Literal["political", "focus", "user_warning"]
     text: str

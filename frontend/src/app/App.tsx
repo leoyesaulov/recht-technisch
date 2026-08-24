@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import {
   AreaChart,
@@ -22,9 +22,11 @@ import {
   Landmark,
   Search,
   Megaphone,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
-import { getClusters, getChartsStats, getMonthlyVolumeStats, getRecommendations } from "./api";
-import type { ChartsStats, Cluster, MonthlyVolumeStats, Recommendation } from "./api";
+import { getClusterComplaints, getClusters, getChartsStats, getMonthlyVolumeStats, getRecommendations } from "./api";
+import type { ChartsStats, Cluster, ClusterComplaint, MonthlyVolumeStats, Recommendation } from "./api";
 
 // ── Palette ───────────────────────────────────────────────────────────────────
 const RED      = "#C8102E";
@@ -59,6 +61,11 @@ const recommendationGroups = {
 
 function monthLabel(value: string) {
   return value.includes("-") ? new Date(`${value}-01T00:00:00Z`).toLocaleDateString("de-DE", { month: "short", timeZone: "UTC" }) : value;
+}
+
+function complaintDateLabel(value: string) {
+  const date = new Date(`${value}T00:00:00`);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
 function ImpressumDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -150,6 +157,82 @@ function SectionStatus({ error }: { error?: string }) {
   );
 }
 
+function ComplaintItem({ complaint }: { complaint: ClusterComplaint }) {
+  const textRef = useRef<HTMLParagraphElement>(null);
+  const [isLong, setIsLong] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  useEffect(() => {
+    const measure = () => {
+      const text = textRef.current;
+      if (!text) return;
+      const lineHeight = Number.parseFloat(getComputedStyle(text).lineHeight);
+      setIsLong(text.scrollHeight > lineHeight * 4 + 1);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    if (textRef.current) observer.observe(textRef.current);
+    return () => observer.disconnect();
+  }, [complaint.body]);
+
+  return (
+    <article style={{ padding: "18px 0", borderTop: `1px solid ${RULE}` }}>
+      <time dateTime={complaint.date_created} style={{ display: "block", marginBottom: "8px", fontFamily: FMONO, fontSize: "10px", color: MUTED_TX }}>
+        {complaintDateLabel(complaint.date_created)}
+      </time>
+      <p
+        ref={textRef}
+        style={{
+          margin: 0,
+          color: "#34342E",
+          fontFamily: FBODY,
+          fontSize: "14px",
+          lineHeight: "20px",
+          whiteSpace: "pre-wrap",
+          ...(isLong && !isExpanded ? { display: "-webkit-box", WebkitBoxOrient: "vertical", WebkitLineClamp: 4, overflow: "hidden" } : {}),
+        }}
+      >
+        {complaint.body}
+      </p>
+      {isLong && (
+        <button
+          type="button"
+          onClick={() => setIsExpanded((current) => !current)}
+          aria-expanded={isExpanded}
+          style={{ display: "inline-flex", alignItems: "center", gap: "4px", marginTop: "10px", border: 0, padding: 0, background: "transparent", color: RED, cursor: "pointer", fontFamily: FMONO, fontSize: "10px" }}
+        >
+          {isExpanded ? <>WENIGER ANZEIGEN <ChevronUp size={12} /></> : <>GANZE BESCHWERDE <ChevronDown size={12} /></>}
+        </button>
+      )}
+    </article>
+  );
+}
+
+function ClusterComplaintsDialog({ cluster, complaints, error, onClose }: { cluster: Cluster; complaints: ClusterComplaint[] | null; error?: string; onClose: () => void }) {
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
+  return (
+    <div role="presentation" onMouseDown={onClose} style={{ position: "fixed", inset: 0, zIndex: 60, padding: "24px", background: "rgba(26,26,26,0.5)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <section role="dialog" aria-modal="true" aria-labelledby="cluster-complaints-title" onMouseDown={(event) => event.stopPropagation()} style={{ width: "min(760px, 100%)", maxHeight: "min(82vh, 820px)", overflowY: "auto", background: "#fff", border: `1px solid ${RULE}`, boxShadow: "0 20px 60px rgba(0,0,0,0.25)", padding: "28px 32px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "16px", marginBottom: "12px" }}>
+          <div>
+            <SectionLabel>BESCHWERDEN IM CLUSTER · MAX. 50</SectionLabel>
+            <h2 id="cluster-complaints-title" style={{ margin: "5px 0 0", fontFamily: FDISPLAY, fontSize: "26px", letterSpacing: "0.04em", color: INK }}>{cluster.title}</h2>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Beschwerden schließen" style={{ border: 0, background: "transparent", color: INK, cursor: "pointer", fontFamily: FMONO, fontSize: "12px", padding: "6px" }}>SCHLIESSEN ×</button>
+        </div>
+        {error ? <SectionStatus error={error} /> : !complaints ? <SectionStatus /> : complaints.length === 0 ? <p style={{ padding: "18px 0", color: MUTED_TX, fontFamily: FBODY, fontSize: "14px" }}>Für dieses Cluster liegen keine Beschwerden vor.</p> : <div>{complaints.map((complaint) => <ComplaintItem key={complaint.id} complaint={complaint} />)}</div>}
+      </section>
+    </div>
+  );
+}
+
 function CustomTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null;
   return (
@@ -180,6 +263,9 @@ export default function App() {
   const [clusters, setClusters] = useState<Cluster[] | null>(null);
   const [recommendationItems, setRecommendationItems] = useState<Recommendation[] | null>(null);
   const [sectionErrors, setSectionErrors] = useState<Record<string, string>>({});
+  const [selectedCluster, setSelectedCluster] = useState<Cluster | null>(null);
+  const [clusterComplaints, setClusterComplaints] = useState<ClusterComplaint[] | null>(null);
+  const [clusterComplaintsError, setClusterComplaintsError] = useState<string>();
 
   useEffect(() => {
     const controller = new AbortController();
@@ -192,6 +278,19 @@ export default function App() {
     load("recommendations", getRecommendations(controller.signal), setRecommendationItems);
     return () => controller.abort();
   }, []);
+
+  useEffect(() => {
+    if (!selectedCluster) return;
+    const controller = new AbortController();
+    setClusterComplaints(null);
+    setClusterComplaintsError(undefined);
+    getClusterComplaints(selectedCluster.id, controller.signal)
+      .then(setClusterComplaints)
+      .catch((requestError: unknown) => {
+        if (requestError instanceof Error && requestError.name !== "AbortError") setClusterComplaintsError(requestError.message);
+      });
+    return () => controller.abort();
+  }, [selectedCluster]);
 
   const monthlyData = (monthlyVolumeStats?.monthly_volume ?? []).slice(-12).map((item) => ({ month: monthLabel(item.period), complaints: item.value }));
   const severity = (chartsStats?.severity ?? []).map((item, index) => ({ label: severityNames[item.id] ?? item.id, pct: item.percentage ?? 0, color: SEVERITY_COLORS[index % SEVERITY_COLORS.length] }));
@@ -272,6 +371,8 @@ export default function App() {
           </span>
         </div>
       </header>
+
+      {selectedCluster && <ClusterComplaintsDialog cluster={selectedCluster} complaints={clusterComplaints} error={clusterComplaintsError} onClose={() => setSelectedCluster(null)} />}
 
       {/* ══════════════════════════════════════════════════════════════════
           SECTION 1 — DESCRIPTIVE STATISTICS (≈20%)
@@ -654,13 +755,22 @@ export default function App() {
                 )}
 
                 {/* Card */}
-                <div
+                <button
+                  type="button"
+                  onClick={() => {
+                    setClusterComplaints(null);
+                    setClusterComplaintsError(undefined);
+                    setSelectedCluster(c);
+                  }}
+                  aria-label={`Beschwerden im Cluster ${c.title} anzeigen`}
                   style={{
                     background: isHov ? "#fff" : "#fff",
                     border: `1px solid ${isHov ? RED : RULE}`,
                     borderRadius: "4px",
                     padding: "18px 20px",
-                    cursor: "default",
+                    cursor: "pointer",
+                    textAlign: "left",
+                    width: "100%",
                     transition: "border-color 0.15s, box-shadow 0.15s",
                     boxShadow: isHov ? `0 2px 12px rgba(200,16,46,0.1)` : "none",
                     display: "flex",
@@ -722,10 +832,10 @@ export default function App() {
                     <span
                       style={{ fontFamily: FMONO, fontSize: "9px", color: MUTED_TX }}
                     >
-                      Repräsentatives Beispiel
+                      Beschwerden anzeigen →
                     </span>
                   </div>
-                </div>
+                </button>
               </div>
             );
           })}

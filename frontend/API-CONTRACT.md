@@ -107,6 +107,25 @@ and period query parameters are not needed for this app.
 `title` and `text` are supplied by the backend. `text` must be anonymized if
 it contains a representative complaint.
 
+### `GET /clusters/{cluster_id}/complaints`
+
+Returns the newest complaints for the selected cluster. `cluster_id` is the
+numeric string returned as a cluster's `id`. The response contains at most 50
+items, ordered newest first. There are no query parameters.
+
+```json
+[
+  {
+    "id": "172",
+    "date_created": "2025-01-03",
+    "body": "Meine Bestellung ist weiterhin nicht eingetroffen."
+  }
+]
+```
+
+`date_created` uses `YYYY-MM-DD`; the frontend formats it for display. The
+complaint body is plain text and must never be rendered as HTML.
+
 ## 3. Recommendations
 
 ### `GET /recommendations`
@@ -178,4 +197,5 @@ def health():
 { "status": "ok" }
 ```
 
-Raw complaint records and complainant personal data are out of scope.
+The cluster-detail endpoint exposes only a complaint's stable ID, creation
+date, and plain-text body; complainant personal data is out of scope.
