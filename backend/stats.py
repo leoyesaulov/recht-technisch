@@ -4,9 +4,10 @@ from google import genai
 from google.genai import types
 from collections import defaultdict
 from datetime import datetime, timezone
-from shared import DescriptiveStatsResponse, MonthlyVolume, StatItem
+from shared import MonthlyVolumeResponse, ChartsStatsResponse, MonthlyVolume, StatItem
 
-_stats_cache: dict = {"stats": None, "expires_at": 0.0}
+_monthly_cache: dict = {"data": None, "expires_at": 0.0}
+_charts_cache: dict = {"data": None, "expires_at": 0.0}
 _CACHE_TTL = 300  # seconds
 
 _SEV_ORDER = ["critical", "high", "medium", "low"]
@@ -41,8 +42,8 @@ def _month_range(start: str, end: str) -> list[str]:
                 strings, then increments a (year, month) counter in a loop,
                 rolling the month back to 1 and incrementing the year when
                 month exceeds 12. No I/O is performed.
-    Ownership: stats.py — calendar utility used by _build_stats to fill months
-               that have zero complaints so the monthly volume series is
+    Ownership: stats.py — calendar utility used by build_monthly_volume to fill
+               months that have zero complaints so the monthly volume series is
                contiguous.
     """
     sy, sm = int(start[:4]), int(start[5:7])
@@ -80,7 +81,7 @@ def _classify_batch(client, batch: list[dict]) -> list[dict]:
                 array is parsed; each item's fields are validated against their
                 allowed value sets before being appended to the result.
     Ownership: stats.py — LLM classification helper, called exclusively by
-               _build_stats in batches of up to 50 complaints.
+               build_charts_stats in batches of up to 50 complaints.
     """
     bodies = "\n".join(
         f"[{i + 1}] {c['body'][:300]}" for i, c in enumerate(batch)
@@ -102,7 +103,34 @@ def _classify_batch(client, batch: list[dict]) -> list[dict]:
     return result
 
 
-def _build_stats() -> DescriptiveStatsResponse:
+def build_monthly_volume() -> MonthlyVolumeResponse:
+    docs = list(db.collection("complaints").stream())
+    total = len(docs)
+    now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    month_counts: dict[str, int] = defaultdict(int)
+    for d in docs:
+        data = d.to_dict() or {}
+        dc = data.get("date_created")
+        if dc and len(dc) >= 7:
+            month_counts[dc[:7]] += 1
+
+    if month_counts:
+        min_period = min(month_counts)
+        cur_period = datetime.now(timezone.utc).strftime("%Y-%m")
+        periods = _month_range(min_period, cur_period)
+    else:
+        periods = []
+    monthly_volume = [MonthlyVolume(period=p, value=month_counts.get(p, 0)) for p in periods]
+
+    return MonthlyVolumeResponse(
+        updated_at=now_utc,
+        total_complaints=total,
+        monthly_volume=monthly_volume,
+    )
+
+
+def build_charts_stats() -> ChartsStatsResponse:
     docs = list(db.collection("complaints").stream())
     total = len(docs)
     now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -117,7 +145,6 @@ def _build_stats() -> DescriptiveStatsResponse:
         ret = data.get("retailer")
         classified = sev in _SEV_ORDER and ch in _CH_ORDER and ret is not None
         records.append({
-            "date_created": data.get("date_created"),
             "body": data.get("body") or "",
             "severity": sev if classified else None,
             "channel": ch if classified else None,
@@ -147,8 +174,6 @@ def _build_stats() -> DescriptiveStatsResponse:
         if ops:
             batch.commit()
 
-    # Fill defaults for any records still missing valid classifications
-    # (LLM returned fewer items than the batch, or Firestore fields were absent)
     for r in records:
         if r["severity"] not in _SEV_ORDER:
             r["severity"] = "low"
@@ -156,21 +181,6 @@ def _build_stats() -> DescriptiveStatsResponse:
             r["channel"] = "online"
         if not r["retailer"]:
             r["retailer"] = "unknown"
-
-    # Monthly volume from date_created (no AI needed)
-    month_counts: dict[str, int] = defaultdict(int)
-    for r in records:
-        dc = r["date_created"]
-        if dc and len(dc) >= 7:
-            month_counts[dc[:7]] += 1
-
-    if month_counts:
-        min_period = min(month_counts)
-        cur_period = datetime.now(timezone.utc).strftime("%Y-%m")
-        periods = _month_range(min_period, cur_period)
-    else:
-        periods = []
-    monthly_volume = [MonthlyVolume(period=p, value=month_counts.get(p, 0)) for p in periods]
 
     sev_counts: dict[str, int] = defaultdict(int)
     ch_counts: dict[str, int] = defaultdict(int)
@@ -183,25 +193,6 @@ def _build_stats() -> DescriptiveStatsResponse:
     safe_total = max(total, 1)
 
     def to_fixed_items(counts: dict, order: list[str]) -> list[StatItem]:
-        """
-        Build a fixed-order list of StatItems from a count dict.
-
-        Input:  counts — dict mapping category id strings to integer complaint
-                         counts; keys absent from counts are treated as zero.
-                order  — list of category id strings defining output order;
-                         every id in order will appear in the result regardless
-                         of whether it has a non-zero count.
-        Returns: A list of StatItem objects in the same order as `order`, each
-                 carrying id, value (raw count), and percentage (rounded to one
-                 decimal place) computed against the enclosing _build_stats
-                 function's safe_total.
-        Processing: Simple list comprehension; looks up each id in counts,
-                    defaulting to 0 for missing keys. Percentage is
-                    count / safe_total * 100. No I/O.
-        Ownership: stats.py — inner helper of _build_stats; used for the
-                   severity and channel breakdowns where the set of categories
-                   is fixed and must always be present in the response.
-        """
         return [
             StatItem(
                 id=k,
@@ -216,10 +207,8 @@ def _build_stats() -> DescriptiveStatsResponse:
         for k, v in sorted(ret_counts.items(), key=lambda x: -x[1])
     ]
 
-    return DescriptiveStatsResponse(
+    return ChartsStatsResponse(
         updated_at=now_utc,
-        total_complaints=total,
-        monthly_volume=monthly_volume,
         severity=to_fixed_items(sev_counts, _SEV_ORDER),
         channels=to_fixed_items(ch_counts, _CH_ORDER),
         retailers=retailers,

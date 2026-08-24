@@ -6,10 +6,14 @@ export type StatItem = {
   percentage?: number;
 };
 
-export type DescriptiveStats = {
+export type MonthlyVolumeStats = {
   updated_at: string;
   total_complaints: number;
   monthly_volume: { period: string; value: number }[];
+};
+
+export type ChartsStats = {
+  updated_at: string;
   severity: StatItem[];
   channels: StatItem[];
   retailers: StatItem[];
@@ -39,8 +43,12 @@ async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
   return response.json();
 }
 
-export function getDescriptiveStats(signal?: AbortSignal) {
-  return get<DescriptiveStats>("/descriptive-stats", signal);
+export function getMonthlyVolumeStats(signal?: AbortSignal) {
+  return get<MonthlyVolumeStats>("/descriptive-stats/monthly-volume", signal);
+}
+
+export function getChartsStats(signal?: AbortSignal) {
+  return get<ChartsStats>("/descriptive-stats/charts", signal);
 }
 
 export function getClusters(signal?: AbortSignal) {

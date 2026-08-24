@@ -3,8 +3,8 @@ import uvicorn
 from shared import db
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from shared import DescriptiveStatsResponse, ClusterResponse, RecommendationResponse
-from stats import _build_stats, _stats_cache, _CACHE_TTL
+from shared import MonthlyVolumeResponse, ChartsStatsResponse, ClusterResponse, RecommendationResponse
+from stats import build_monthly_volume, build_charts_stats, _monthly_cache, _charts_cache, _CACHE_TTL
 from recommend import build_recommendations, _reco_cache, _RECO_TTL
 
 app = FastAPI(title="Recht Technisch API", version="0.1.0")
@@ -56,37 +56,63 @@ def health():
     return {"status": "ok", "db": db_status}
 
 
-@app.get("/descriptive-stats", response_model=DescriptiveStatsResponse)
-def descriptive_stats():
+@app.get("/descriptive-stats/monthly-volume", response_model=MonthlyVolumeResponse)
+def descriptive_stats_monthly_volume():
     """
-    Aggregated complaint statistics endpoint.
+    Complaint volume time-series endpoint.
 
     Input:  None — no query or path parameters.
-    Returns: A DescriptiveStatsResponse JSON object containing the timestamp of
-             the last computation, total complaint count, monthly volume series,
-             and percentage breakdowns by severity, channel, and retailer.
-    Processing: Checks the module-level _stats_cache dict against the current
-                Unix timestamp. If a valid cached result exists (within the
-                300-second TTL), it is returned immediately without any I/O. On
-                a cache miss, delegates to _build_stats() from stats.py, which
-                reads Firestore and calls the Gemini LLM; the result is stored
-                in the cache before being returned. Any exception from
-                _build_stats() is caught, logged to stdout, and re-raised as
-                HTTP 500.
+    Returns: A MonthlyVolumeResponse JSON object containing the computation
+             timestamp, total complaint count, and a contiguous monthly volume
+             series. No LLM calls are made; all data is derived from Firestore
+             date_created fields.
+    Processing: Checks _monthly_cache; on a miss delegates to
+                build_monthly_volume() from stats.py and caches the result for
+                _CACHE_TTL seconds. Exceptions are logged and re-raised as 500.
     Ownership: API layer (api.py) — thin cache wrapper; computation lives in
-               stats.py:_build_stats.
+               stats.py:build_monthly_volume.
     """
     now = time.time()
-    if _stats_cache["stats"] is not None and now < _stats_cache["expires_at"]:
-        return _stats_cache["stats"]
+    if _monthly_cache["data"] is not None and now < _monthly_cache["expires_at"]:
+        return _monthly_cache["data"]
     try:
-        result = _build_stats()
+        result = build_monthly_volume()
     except Exception as exc:
         import traceback
-        print(f"ERROR descriptive_stats: {exc}\n{traceback.format_exc()}")
+        print(f"ERROR descriptive_stats_monthly_volume: {exc}\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail={"error": "Something went wrong."})
-    _stats_cache["stats"] = result
-    _stats_cache["expires_at"] = now + _CACHE_TTL
+    _monthly_cache["data"] = result
+    _monthly_cache["expires_at"] = now + _CACHE_TTL
+    return result
+
+
+@app.get("/descriptive-stats/charts", response_model=ChartsStatsResponse)
+def descriptive_stats_charts():
+    """
+    Severity, channel, and retailer breakdown endpoint.
+
+    Input:  None — no query or path parameters.
+    Returns: A ChartsStatsResponse JSON object containing the computation
+             timestamp and percentage breakdowns by severity, channel, and
+             retailer. Unclassified complaints are sent to the Gemini LLM in
+             batches before breakdowns are computed.
+    Processing: Checks _charts_cache; on a miss delegates to
+                build_charts_stats() from stats.py and caches the result for
+                _CACHE_TTL seconds. Exceptions are logged and re-raised as 500.
+    Ownership: API layer (api.py) — thin cache wrapper; computation lives in
+               stats.py:build_charts_stats.
+    """
+    now = time.time()
+    if _charts_cache["data"] is not None and now < _charts_cache["expires_at"]:
+        return _charts_cache["data"]
+    try:
+        result = build_charts_stats()
+    except Exception as exc:
+        import traceback
+        print(f"ERROR descriptive_stats_charts: {exc}\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail={"error": "Something went wrong."})
+    _charts_cache["data"] = result
+    _charts_cache["expires_at"] = now + _CACHE_TTL
     return result
 
 
