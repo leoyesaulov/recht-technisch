@@ -28,6 +28,7 @@ export type Cluster = {
 
 export type ClusterComplaint = {
   id: string;
+  /** Date-only (`YYYY-MM-DD`), even when the source CSV contained a time. */
   date_created: string;
   body: string;
 };

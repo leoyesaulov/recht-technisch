@@ -64,7 +64,10 @@ function monthLabel(value: string) {
 }
 
 function complaintDateLabel(value: string) {
-  const date = new Date(`${value}T00:00:00`);
+  // API responses are date-only. Strip a source timestamp defensively so the
+  // display remains stable if older data contains one.
+  const dateOnly = value.slice(0, 10);
+  const date = new Date(`${dateOnly}T00:00:00`);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 

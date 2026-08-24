@@ -36,7 +36,11 @@ class ClusterResponse(BaseModel):
 
 
 class ComplaintResponse(BaseModel):
-    """A complaint shown in the detail view for a single cluster."""
+    """A complaint shown in the detail view for a single cluster.
+
+    ``date_created`` is always date-only, including when its source CSV
+    supplied a timestamp.
+    """
 
     id: str
     date_created: str  # "YYYY-MM-DD"

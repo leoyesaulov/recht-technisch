@@ -23,7 +23,7 @@ the caller instead of partially hiding them.
 import csv
 import random
 import time
-from datetime import date
+from datetime import datetime
 
 from google import genai
 from google.cloud import firestore
@@ -33,6 +33,25 @@ from google.genai.types import EmbedContentConfig
 from shared import db
 
 LOCATION = "europe-west1"
+
+DATE_CREATED_FORMATS = ("%Y-%m-%d", "%Y-%m-%d %H:%M:%S")
+
+
+def normalize_date_created(value: str) -> str:
+    """Validate an input CSV date and return the date-only storage value.
+
+    Source exports may contain either a date or a space-separated timestamp.
+    The time is deliberately discarded because ``date_created`` is stored and
+    exposed as a calendar date throughout the application.
+    """
+    for value_format in DATE_CREATED_FORMATS:
+        try:
+            return datetime.strptime(value, value_format).date().isoformat()
+        except ValueError:
+            continue
+    raise ValueError(
+        "date_created must use YYYY-MM-DD or YYYY-MM-DD HH:MM:SS"
+    )
 
 
 def _embed_with_backoff(client: genai.Client, body: str):
@@ -89,12 +108,11 @@ def ingest_data() -> None:
             if not isinstance(body, str) or not body.strip():
                 raise ValueError("Complaint body must be non-empty text")
             if not isinstance(date_created, str):
-                raise ValueError("date_created must be a YYYY-MM-DD string")
+                raise ValueError(
+                    "date_created must use YYYY-MM-DD or YYYY-MM-DD HH:MM:SS"
+                )
 
-            try:
-                date_created = date.fromisoformat(date_created).isoformat()
-            except ValueError as exc:
-                raise ValueError("date_created must be a YYYY-MM-DD string") from exc
+            date_created = normalize_date_created(date_created)
 
             response = _embed_with_backoff(genai_client, body.strip())
             if len(response.embeddings) != 1:

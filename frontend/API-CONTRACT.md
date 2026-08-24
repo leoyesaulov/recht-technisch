@@ -9,7 +9,10 @@ monthly data for display.
 
 - Base URL: the deployed backend URL, without a path suffix or trailing slash.
 - Requests and responses use JSON.
-- Dates use `YYYY-MM-DD`; timestamps use ISO 8601.
+- Stored and API dates use `YYYY-MM-DD`; timestamps use ISO 8601.
+- CSV ingestion accepts `date_created` as either `YYYY-MM-DD` or
+  `YYYY-MM-DD HH:MM:SS`. When a time is supplied, it is discarded before
+  storage and API responses still return `YYYY-MM-DD`.
 - IDs are stable strings. Cluster titles and text are supplied by the backend.
 - Do not return presentation fields such as `label` or `icon`.
 - Generated recommendation content is rendered as text, never as HTML.
@@ -123,8 +126,10 @@ items, ordered newest first. There are no query parameters.
 ]
 ```
 
-`date_created` uses `YYYY-MM-DD`; the frontend formats it for display. The
-complaint body is plain text and must never be rendered as HTML.
+`date_created` always uses `YYYY-MM-DD`, even if ingestion received
+`YYYY-MM-DD HH:MM:SS`; the time is not stored. The frontend formats the date
+for display. The complaint body is plain text and must never be rendered as
+HTML.
 
 ## 3. Recommendations
 
