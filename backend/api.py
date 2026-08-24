@@ -6,10 +6,11 @@ from shared import db
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from shared import MonthlyVolumeResponse, ChartsStatsResponse, ClusterResponse, RecommendationResponse, IngestionResponse
+from shared import MonthlyVolumeResponse, ChartsStatsResponse, ClusterResponse, ComplaintResponse, RecommendationResponse, IngestionResponse
 from stats import build_monthly_volume, build_charts_stats, _monthly_cache, _charts_cache, _CACHE_TTL
 from recommend import build_recommendations, _reco_cache, _RECO_TTL
 from data_ingestion import ingest_data
+from get_cluster_complaints import get_cluster_complaints
 
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 REQUIRED_CSV_COLUMNS = ["date_created", "complaint"]
@@ -190,6 +191,22 @@ def clusters():
         )
         for cluster in cluster_docs
     ]
+
+
+@app.get("/clusters/{cluster_id}/complaints", response_model=list[ComplaintResponse])
+def cluster_complaints(cluster_id: int):
+    """Return at most 50 newest complaints belonging to one cluster.
+
+    ``cluster_id`` is the numeric identifier returned by :endpoint:`/clusters`.
+    Complaint records are already forcefully assigned to one label by the
+    clustering pipeline, so the endpoint only filters and serializes them.
+    """
+    try:
+        return get_cluster_complaints(cluster_id)
+    except Exception as exc:
+        import traceback
+        print(f"ERROR cluster_complaints({cluster_id}): {exc}\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail={"error": "Something went wrong."})
 
 
 @app.get("/recommendations", response_model=list[RecommendationResponse])

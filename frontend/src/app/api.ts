@@ -26,6 +26,13 @@ export type Cluster = {
   count: number;
 };
 
+export type ClusterComplaint = {
+  id: string;
+  /** Date-only (`YYYY-MM-DD`), even when the source CSV contained a time. */
+  date_created: string;
+  body: string;
+};
+
 export type RecommendationId = "political" | "focus" | "user_warning";
 
 export type Recommendation = {
@@ -66,6 +73,10 @@ export function getChartsStats(signal?: AbortSignal) {
 
 export function getClusters(signal?: AbortSignal) {
   return get<Cluster[]>("/clusters", signal);
+}
+
+export function getClusterComplaints(clusterId: string, signal?: AbortSignal) {
+  return get<ClusterComplaint[]>(`/clusters/${encodeURIComponent(clusterId)}/complaints`, signal);
 }
 
 export function getRecommendations(signal?: AbortSignal) {

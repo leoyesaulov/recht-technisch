@@ -35,6 +35,18 @@ class ClusterResponse(BaseModel):
     count: int
 
 
+class ComplaintResponse(BaseModel):
+    """A complaint shown in the detail view for a single cluster.
+
+    ``date_created`` is always date-only, including when its source CSV
+    supplied a timestamp.
+    """
+
+    id: str
+    date_created: str  # "YYYY-MM-DD"
+    body: str
+
+
 class RecommendationResponse(BaseModel):
     id: Literal["political", "focus", "user_warning"]
     text: str

@@ -9,7 +9,10 @@ monthly data for display.
 
 - Base URL: the deployed backend URL, without a path suffix or trailing slash.
 - Requests and responses use JSON.
-- Dates use `YYYY-MM-DD`; timestamps use ISO 8601.
+- Stored and API dates use `YYYY-MM-DD`; timestamps use ISO 8601.
+- CSV ingestion accepts `date_created` as either `YYYY-MM-DD` or
+  `YYYY-MM-DD HH:MM:SS`. When a time is supplied, it is discarded before
+  storage and API responses still return `YYYY-MM-DD`.
 - IDs are stable strings. Cluster titles and text are supplied by the backend.
 - Do not return presentation fields such as `label` or `icon`.
 - Generated recommendation content is rendered as text, never as HTML.
@@ -107,6 +110,27 @@ and period query parameters are not needed for this app.
 `title` and `text` are supplied by the backend. `text` must be anonymized if
 it contains a representative complaint.
 
+### `GET /clusters/{cluster_id}/complaints`
+
+Returns the newest complaints for the selected cluster. `cluster_id` is the
+numeric string returned as a cluster's `id`. The response contains at most 50
+items, ordered newest first. There are no query parameters.
+
+```json
+[
+  {
+    "id": "172",
+    "date_created": "2025-01-03",
+    "body": "Meine Bestellung ist weiterhin nicht eingetroffen."
+  }
+]
+```
+
+`date_created` always uses `YYYY-MM-DD`, even if ingestion received
+`YYYY-MM-DD HH:MM:SS`; the time is not stored. The frontend formats the date
+for display. The complaint body is plain text and must never be rendered as
+HTML.
+
 ## 3. Recommendations
 
 ### `GET /recommendations`
@@ -201,4 +225,5 @@ def health():
 { "status": "ok" }
 ```
 
-Raw complaint records and complainant personal data are out of scope.
+The cluster-detail endpoint exposes only a complaint's stable ID, creation
+date, and plain-text body; complainant personal data is out of scope.
