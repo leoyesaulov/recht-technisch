@@ -162,6 +162,29 @@ An unexpected failure returns `500`:
 The frontend should show the affected section's error and keep the other two
 sections usable.
 
+## 4. Data ingestion
+
+### `POST /ingestion`
+
+Uploads a `multipart/form-data` body with one `file` field. The file must be a
+UTF-8 CSV no larger than 10 MiB, with exactly these columns in this order:
+
+```csv
+date_created,complaint
+2026-08-24,"The delivery arrived late."
+```
+
+`date_created` must be a valid `YYYY-MM-DD` date and `complaint` must be
+non-empty. The API validates the full file before it writes records. A
+successful upload returns `201`:
+
+```json
+{ "inserted": 1 }
+```
+
+Invalid files return `400` with `{ "error": "..." }`; unexpected ingestion
+failures return `500`.
+
 ## Health check
 
 ### `GET /health`

@@ -20,10 +20,10 @@ Use :func:`ingest_data` as the single entry point for loading a source into the
 ``complaints`` Firestore collection. It raises source or validation errors to
 the caller instead of partially hiding them.
 """
-import csv
 import random
 import time
 from datetime import date
+from collections.abc import Mapping, Sequence
 
 from google import genai
 from google.cloud import firestore
@@ -59,19 +59,43 @@ def _embed_with_backoff(client: genai.Client, body: str):
     raise ValueError("Failed to embed complaint")
 
 
-def ingest_data() -> None:
-    """Load, validate, embed, and persist complaints from the configured CSV."""
+def ingest_data(raw_complaints: Sequence[Mapping[str, object]]) -> int:
+    """Validate, embed, and persist uploaded complaints.
+
+    ``raw_complaints`` must contain dictionaries with ``date_created`` and
+    ``complaint`` keys.  The function only writes after every record has been
+    validated and embedded, so invalid input cannot leave a partial upload in
+    Firestore.  It returns the number of inserted complaints.
+    """
     genai_client = None
 
     try:
         complaints = db.collection("complaints")
         clean_complaints = []
 
-        with open("/Users/Misha/Documents/Dev/projects/playground/temp/prunned_complaints.csv") as f:
-            raw_complaints = list(csv.DictReader(f))
-
         if not raw_complaints:
-            return None
+            return 0
+
+        for complaint in raw_complaints:
+            if not isinstance(complaint, Mapping):
+                raise ValueError("Complaint must be an object")
+
+            body = complaint.get("complaint")
+            date_created = complaint.get("date_created")
+
+            if not isinstance(body, str) or not body.strip():
+                raise ValueError("complaint must be non-empty text")
+            if not isinstance(date_created, str):
+                raise ValueError("date_created must be a YYYY-MM-DD string")
+
+            try:
+                if len(date_created) != 10 or date_created[4] != "-" or date_created[7] != "-":
+                    raise ValueError
+                normalized_date = date.fromisoformat(date_created).isoformat()
+            except ValueError as exc:
+                raise ValueError("date_created must be a YYYY-MM-DD string") from exc
+
+            clean_complaints.append({"date_created": normalized_date, "body": body.strip()})
 
         genai_client = genai.Client(
             enterprise=True,
@@ -79,24 +103,8 @@ def ingest_data() -> None:
             location=LOCATION,
         )
 
-        for complaint in raw_complaints:
-            if not isinstance(complaint, dict):
-                raise ValueError("Complaint must be an object")
-
-            body = complaint.get("body")
-            date_created = complaint.get("date_created")
-
-            if not isinstance(body, str) or not body.strip():
-                raise ValueError("Complaint body must be non-empty text")
-            if not isinstance(date_created, str):
-                raise ValueError("date_created must be a YYYY-MM-DD string")
-
-            try:
-                date_created = date.fromisoformat(date_created).isoformat()
-            except ValueError as exc:
-                raise ValueError("date_created must be a YYYY-MM-DD string") from exc
-
-            response = _embed_with_backoff(genai_client, body.strip())
+        for complaint in clean_complaints:
+            response = _embed_with_backoff(genai_client, complaint["body"])
             if len(response.embeddings) != 1:
                 raise ValueError(
                     "Expected exactly one embedding per complaint, "
@@ -107,7 +115,7 @@ def ingest_data() -> None:
             if not hasattr(values, "__iter__") or not all(isinstance(i, float) for i in values):
                 raise ValueError("Malformed embedding values")
 
-            clean_complaints.append({"date_created": date_created, "body": body.strip(), "embedding": values})
+            complaint["embedding"] = values
 
         @firestore.transactional
         def write_complaints(transaction, items):
@@ -124,11 +132,10 @@ def ingest_data() -> None:
         # Firestore transactions support at most 500 writes.
         for start in range(0, len(clean_complaints), 400):
             write_complaints(db.transaction(), clean_complaints[start:start + 400])
+        return len(clean_complaints)
     finally:
         if genai_client is not None:
             genai_client.close()
 
 if __name__ == "__main__":
-    print("Start data ingestion pipeline")
-    ingest_data()
-    print("Finished data ingestion pipeline successfully!")
+    print("ingest_data() now accepts a list of complaint dictionaries.")

@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { getClusters, getChartsStats, getMonthlyVolumeStats, getRecommendations } from "./api";
 import type { ChartsStats, Cluster, MonthlyVolumeStats, Recommendation } from "./api";
+import IngestionPage from "./IngestionPage";
 
 // ── Palette ───────────────────────────────────────────────────────────────────
 const RED      = "#C8102E";
@@ -173,6 +174,7 @@ function CustomTooltip({ active, payload, label }: any) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 export default function App() {
+  if (window.location.pathname === "/ingestion") return <IngestionPage />;
   const [isImpressumOpen, setIsImpressumOpen] = useState(false);
   const [hovered, setHovered] = useState<number | null>(null);
   const [monthlyVolumeStats, setMonthlyVolumeStats] = useState<MonthlyVolumeStats | null>(null);
@@ -270,6 +272,7 @@ export default function App() {
           <span style={{ fontFamily: FMONO, fontSize: "11px", color: MUTED_TX }}>
             {totalComplaints.toLocaleString("de-DE")} erfasste Beschwerden
           </span>
+          <a href="/ingestion" style={{ marginLeft: "18px", fontFamily: FMONO, fontSize: "11px", color: RED, textDecoration: "none" }}>DATEN HOCHLADEN</a>
         </div>
       </header>
 
