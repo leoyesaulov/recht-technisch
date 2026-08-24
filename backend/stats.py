@@ -192,24 +192,33 @@ def build_charts_stats() -> ChartsStatsResponse:
 
     safe_total = max(total, 1)
 
-    def to_fixed_items(counts: dict, order: list[str]) -> list[StatItem]:
-        return [
-            StatItem(
+    def to_items(counts: dict, order: list[str]) -> list[StatItem]:
+        """Round percentages while preserving an exact 100% total."""
+        if total == 0:
+            return [StatItem(id=k, value=counts.get(k, 0), percentage=0) for k in order]
+
+        items: list[StatItem] = []
+        assigned_percentage = 0.0
+        for k in order[:-1]:
+            value = counts.get(k, 0)
+            percentage = round(value / safe_total * 100, 1)
+            items.append(StatItem(id=k, value=value, percentage=percentage))
+            assigned_percentage += percentage
+
+        if order:
+            k = order[-1]
+            items.append(StatItem(
                 id=k,
                 value=counts.get(k, 0),
-                percentage=round(counts.get(k, 0) / safe_total * 100, 1),
-            )
-            for k in order
-        ]
+                percentage=round(100 - assigned_percentage, 1),
+            ))
+        return items
 
-    retailers = [
-        StatItem(id=k, value=v, percentage=round(v / safe_total * 100, 1))
-        for k, v in sorted(ret_counts.items(), key=lambda x: -x[1])
-    ]
+    retailers = to_items(ret_counts, [k for k, _ in sorted(ret_counts.items(), key=lambda x: -x[1])])
 
     return ChartsStatsResponse(
         updated_at=now_utc,
-        severity=to_fixed_items(sev_counts, _SEV_ORDER),
-        channels=to_fixed_items(ch_counts, _CH_ORDER),
+        severity=to_items(sev_counts, _SEV_ORDER),
+        channels=to_items(ch_counts, _CH_ORDER),
         retailers=retailers,
     )

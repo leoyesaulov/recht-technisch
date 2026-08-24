@@ -78,8 +78,8 @@ FastAPI route:
 }
 ```
 
-Percentages are numbers from `0` to `100` and may differ from `100` slightly
-because of rounding.
+Percentages are numbers from `0` to `100`; every complete distribution sums
+to exactly `100` after rounding.
 
 ## 2. Complaint clusters
 
