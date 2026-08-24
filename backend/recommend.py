@@ -15,6 +15,7 @@ exactly three recommendations. Return only a JSON object with keys "political", 
 
 Base each recommendation on the cluster sizes and descriptions. No extra keys, \
 no conversational text, no markdown.
+Write all "text" and "detail" values in German.
 
 Clusters:
 {clusters}"""
