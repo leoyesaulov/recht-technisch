@@ -23,8 +23,8 @@ import {
   Search,
   Megaphone,
 } from "lucide-react";
-import { getClusters, getDescriptiveStats, getRecommendations } from "./api";
-import type { Cluster, DescriptiveStats, Recommendation } from "./api";
+import { getClusters, getChartsStats, getMonthlyVolumeStats, getRecommendations } from "./api";
+import type { ChartsStats, Cluster, MonthlyVolumeStats, Recommendation } from "./api";
 
 // ── Palette ───────────────────────────────────────────────────────────────────
 const RED      = "#C8102E";
@@ -175,7 +175,8 @@ function CustomTooltip({ active, payload, label }: any) {
 export default function App() {
   const [isImpressumOpen, setIsImpressumOpen] = useState(false);
   const [hovered, setHovered] = useState<number | null>(null);
-  const [stats, setStats] = useState<DescriptiveStats | null>(null);
+  const [monthlyVolumeStats, setMonthlyVolumeStats] = useState<MonthlyVolumeStats | null>(null);
+  const [chartsStats, setChartsStats] = useState<ChartsStats | null>(null);
   const [clusters, setClusters] = useState<Cluster[] | null>(null);
   const [recommendationItems, setRecommendationItems] = useState<Recommendation[] | null>(null);
   const [sectionErrors, setSectionErrors] = useState<Record<string, string>>({});
@@ -185,20 +186,21 @@ export default function App() {
     const load = <T,>(key: string, request: Promise<T>, setData: (data: T) => void) => request.then(setData).catch((requestError: unknown) => {
       if (requestError instanceof Error && requestError.name !== "AbortError") setSectionErrors((current) => ({ ...current, [key]: requestError.message }));
     });
-    load("stats", getDescriptiveStats(controller.signal), setStats);
+    load("statsVolume", getMonthlyVolumeStats(controller.signal), setMonthlyVolumeStats);
+    load("statsCharts", getChartsStats(controller.signal), setChartsStats);
     load("clusters", getClusters(controller.signal), setClusters);
     load("recommendations", getRecommendations(controller.signal), setRecommendationItems);
     return () => controller.abort();
   }, []);
 
-  const monthlyData = (stats?.monthly_volume ?? []).slice(-12).map((item) => ({ month: monthLabel(item.period), complaints: item.value }));
-  const severity = (stats?.severity ?? []).map((item, index) => ({ label: severityNames[item.id] ?? item.id, pct: item.percentage ?? 0, color: SEVERITY_COLORS[index % SEVERITY_COLORS.length] }));
-  const channelData = (stats?.channels ?? []).map((item) => ({ name: channelNames[item.id] ?? item.id, value: item.percentage ?? 0 }));
-  const retailers = (stats?.retailers ?? [])
+  const monthlyData = (monthlyVolumeStats?.monthly_volume ?? []).slice(-12).map((item) => ({ month: monthLabel(item.period), complaints: item.value }));
+  const severity = (chartsStats?.severity ?? []).map((item, index) => ({ label: severityNames[item.id] ?? item.id, pct: item.percentage ?? 0, color: SEVERITY_COLORS[index % SEVERITY_COLORS.length] }));
+  const channelData = (chartsStats?.channels ?? []).map((item) => ({ name: channelNames[item.id] ?? item.id, value: item.percentage ?? 0 }));
+  const retailers = (chartsStats?.retailers ?? [])
     .map((item) => ({ name: item.id, value: item.percentage ?? 0 }))
     .sort((a, b) => b.value - a.value)
     .slice(0, 5);
-  const totalComplaints = stats?.total_complaints ?? 0;
+  const totalComplaints = monthlyVolumeStats?.total_complaints ?? 0;
   const peakItem = monthlyData.reduce((peak, item) => item.complaints > peak.complaints ? item : peak, { month: "—", complaints: 0 });
   const recommendations = useMemo(() => {
     return (recommendationItems ?? []).map((recommendation) => {
@@ -291,8 +293,7 @@ export default function App() {
           <SectionLabel>ABSCHNITT 1 VON 3</SectionLabel>
         </div>
 
-        {sectionErrors.stats ? <SectionStatus error={sectionErrors.stats} /> : !stats ? <SectionStatus /> : (
-        /* Row: time-series chart + 3 stat tiles */
+        {/* Row: time-series chart + 3 stat tiles */}
         <div
           style={{
             display: "grid",
@@ -302,7 +303,11 @@ export default function App() {
           }}
         >
           {/* ── Time series ── */}
-          <div>
+          {sectionErrors.statsVolume
+            ? <SectionStatus error={sectionErrors.statsVolume} />
+            : !monthlyVolumeStats
+              ? <SectionStatus />
+              : <div>
             <div
               style={{
                 display: "flex",
@@ -376,8 +381,14 @@ export default function App() {
                 </AreaChart>
               </ResponsiveContainer>
             </div>
-          </div>
+          </div>}
 
+          {/* ── Severity / Channel / Retailers ── */}
+          {sectionErrors.statsCharts
+            ? <div style={{ gridColumn: "span 3" }}><SectionStatus error={sectionErrors.statsCharts} /></div>
+            : !chartsStats
+              ? <div style={{ gridColumn: "span 3" }}><SectionStatus /></div>
+              : <>
           {/* ── Severity ── */}
           <div
             style={{
@@ -542,8 +553,8 @@ export default function App() {
               ))}
             </div>
           </div>
+          </>}
         </div>
-        )}
       </section>
 
       {/* ══════════════════════════════════════════════════════════════════
@@ -849,7 +860,7 @@ export default function App() {
           IMPRESSUM
         </button>
         <span style={{ fontFamily: FMONO, fontSize: "10px", color: MUTED_TX }}>
-          Aktualisiert: {stats ? new Date(stats.updated_at).toLocaleString("de-DE") : "—"}
+          Aktualisiert: {monthlyVolumeStats ? new Date(monthlyVolumeStats.updated_at).toLocaleString("de-DE") : "—"}
         </span>
       </footer>
       <ImpressumDialog open={isImpressumOpen} onClose={() => setIsImpressumOpen(false)} />

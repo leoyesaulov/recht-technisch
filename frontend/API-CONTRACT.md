@@ -16,18 +16,17 @@ monthly data for display.
 
 ## 1. Descriptive statistics
 
-### `GET /descriptive-stats`
+### `GET /descriptive-stats/monthly-volume`
+
+This endpoint is accessed by the frontend to update the complaint volume chart within descriptive statistics module. This element should act as an attention grabber to mask long processing times for new complaints through an LLM.
 
 FastAPI route:
 
 ```python
-@app.get("/descriptive-stats")
-def descriptive_stats():
+@app.get("/descriptive-stats/monthly-volume")
+def monthly-volume():
     ...
 ```
-
-The response contains all available data. There are no period query
-parameters; the frontend trims older monthly entries for display.
 
 ```json
 {
@@ -38,7 +37,27 @@ parameters; the frontend trims older monthly entries for display.
     { "period": "2024-02", "value": 138 },
     { "period": "2024-03", "value": 151 },
     { "period": "...", "value": 0 }
-  ],
+  ]
+}
+```
+
+The response contains all available data. There are no period query
+parameters; the frontend trims older monthly entries for display.
+`monthly_volume` is chronological and includes months with zero complaints.
+
+### `GET /descriptive-stats/charts`
+
+This endpoint is accessed by frontend to update the severity/retailer/channel charts within descriptive statistics module. The processing takes a long time for new complaints, so this data will arrive later than deterministic monthly volume.
+
+FastAPI route:
+
+```python
+@app.get("/descriptive-stats/charts")
+```
+
+```json
+{
+  "updated_at": "2025-01-03T09:15:00Z",
   "severity": [
     { "id": "critical", "value": 492, "percentage": 18 },
     { "id": "high", "value": 876, "percentage": 32 },
@@ -56,7 +75,6 @@ parameters; the frontend trims older monthly entries for display.
 }
 ```
 
-`monthly_volume` is chronological and includes months with zero complaints.
 Percentages are numbers from `0` to `100` and may differ from `100` slightly
 because of rounding.
 

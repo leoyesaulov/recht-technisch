@@ -15,10 +15,14 @@ class StatItem(BaseModel):
     percentage: float
 
 
-class DescriptiveStatsResponse(BaseModel):
+class MonthlyVolumeResponse(BaseModel):
     updated_at: str
     total_complaints: int
     monthly_volume: list[MonthlyVolume]
+
+
+class ChartsStatsResponse(BaseModel):
+    updated_at: str
     severity: list[StatItem]
     channels: list[StatItem]
     retailers: list[StatItem]
