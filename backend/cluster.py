@@ -139,6 +139,7 @@ def _generate_cluster_summary(client: genai.Client, prompt: str, label: int) -> 
                     response_mime_type="application/json",
                     automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
                     response_schema=ClusterSummary,
+                    thinking_config=types.ThinkingConfig(thinking_budget=0),
                 ),
             )
             return _validate_cluster_summary(response.parsed if response.parsed is not None else response.text)

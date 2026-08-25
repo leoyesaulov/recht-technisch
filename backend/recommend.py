@@ -66,7 +66,10 @@ def build_recommendations() -> list[RecommendationResponse]:
     response = client.models.generate_content(
         model="gemini-2.5-flash",
         contents=_PROMPT.format(clusters=cluster_text),
-        config=types.GenerateContentConfig(response_mime_type="application/json"),
+        config=types.GenerateContentConfig(
+            response_mime_type="application/json",
+            thinking_config=types.ThinkingConfig(thinking_budget=0),
+        ),
     )
     parsed = json.loads(response.text)
 
