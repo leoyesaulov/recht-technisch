@@ -13,6 +13,19 @@ _CACHE_TTL = 300  # seconds
 _SEV_ORDER = ["critical", "high", "medium", "low"]
 _CH_ORDER = ["online", "in_person"]
 
+_CLASSIFICATION_RESPONSE_SCHEMA = {
+    "type": "array",
+    "items": {
+        "type": "object",
+        "properties": {
+            "severity": {"type": "string", "enum": _SEV_ORDER},
+            "channel": {"type": "string", "enum": _CH_ORDER},
+            "retailer": {"type": "string"},
+        },
+        "required": ["severity", "channel", "retailer"],
+    },
+}
+
 _CLASSIFY_PROMPT = """\
 You are a consumer-complaint classifier. Classify each numbered complaint.
 For each, choose exactly one value per field:
@@ -86,21 +99,37 @@ def _classify_batch(client, batch: list[dict]) -> list[dict]:
     bodies = "\n".join(
         f"[{i + 1}] {c['body'][:300]}" for i, c in enumerate(batch)
     )
-    response = client.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=_CLASSIFY_PROMPT.format(bodies=bodies),
-        config=types.GenerateContentConfig(response_mime_type="application/json"),
-    )
-    parsed = json.loads(response.text)
-    result = []
-    for item in parsed:
-        raw_retailer = str(item.get("retailer") or "unknown").lower().strip()
-        result.append({
-            "severity": item.get("severity", "low") if item.get("severity") in _SEV_ORDER else "low",
-            "channel": item.get("channel", "online") if item.get("channel") in _CH_ORDER else "online",
-            "retailer": raw_retailer or "unknown",
-        })
-    return result
+    last_error: Exception | None = None
+    for _ in range(3):
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=_CLASSIFY_PROMPT.format(bodies=bodies),
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_json_schema=_CLASSIFICATION_RESPONSE_SCHEMA,
+                temperature=0,
+            ),
+        )
+        try:
+            parsed = json.loads(response.text)
+            if not isinstance(parsed, list) or len(parsed) != len(batch):
+                raise ValueError("Classifier response did not contain one result per complaint")
+
+            result = []
+            for item in parsed:
+                if not isinstance(item, dict):
+                    raise ValueError("Classifier response contains a non-object result")
+                raw_retailer = str(item.get("retailer") or "unknown").lower().strip()
+                result.append({
+                    "severity": item.get("severity", "low") if item.get("severity") in _SEV_ORDER else "low",
+                    "channel": item.get("channel", "online") if item.get("channel") in _CH_ORDER else "online",
+                    "retailer": raw_retailer or "unknown",
+                })
+            return result
+        except (json.JSONDecodeError, ValueError) as exc:
+            last_error = exc
+
+    raise ValueError("Classifier returned invalid JSON after three attempts") from last_error
 
 
 def build_monthly_volume() -> MonthlyVolumeResponse:
