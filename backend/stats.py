@@ -288,12 +288,15 @@ def build_monthly_volume() -> MonthlyVolumeResponse:
         if dc and len(dc) >= 7:
             month_counts[dc[:7]] += 1
 
-    if month_counts:
-        min_period = min(month_counts)
-        cur_period = datetime.now(timezone.utc).strftime("%Y-%m")
-        periods = _month_range(min_period, cur_period)
-    else:
-        periods = []
+    now = datetime.now(timezone.utc)
+    cur_period = now.strftime("%Y-%m")
+    y, m = now.year, now.month - 12
+    if m <= 0:
+        m += 12
+        y -= 1
+    twelve_months_ago = f"{y:04d}-{m:02d}"
+    start_period = min(min(month_counts), twelve_months_ago) if month_counts else twelve_months_ago
+    periods = _month_range(start_period, cur_period)
     monthly_volume = [MonthlyVolume(period=p, value=month_counts.get(p, 0)) for p in periods]
 
     return MonthlyVolumeResponse(
