@@ -24,6 +24,7 @@ from math import ceil
 
 from google import genai
 from google.genai import types
+from google.cloud import firestore as _firestore
 from google.cloud.firestore_v1.base_query import FieldFilter
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 from sklearn.cluster import HDBSCAN
@@ -55,6 +56,33 @@ class ClusterSummary(BaseModel):
     @classmethod
     def round_coherentness(cls, value: float) -> float:
         return round(value, 2)
+
+
+def _get_max_complaint_id() -> int:
+    docs = list(db.collection("complaints").order_by("id", direction=_firestore.Query.DESCENDING).limit(1).stream())
+    return docs[0].get("id") if docs else 0
+
+
+def _get_last_clustered_id() -> int:
+    snap = db.collection("metadata").document("clustering").get()
+    if not snap.exists:
+        return 0
+    return int(snap.get("last_clustered_max_id") or 0)
+
+
+def needs_reclustering() -> bool:
+    """Return True if any complaints have been ingested since the last cluster run."""
+    return _get_max_complaint_id() > _get_last_clustered_id()
+
+
+def run_pipeline() -> None:
+    """Run the full clustering pipeline and record the high-water mark."""
+    cluster_complaints()
+    compile_semantic_averages()
+    db.collection("metadata").document("clustering").set(
+        {"last_clustered_max_id": _get_max_complaint_id()},
+        merge=True,
+    )
 
 
 def cluster_complaints(min_samples: int = 3, min_cluster_size: int = 10) -> None:

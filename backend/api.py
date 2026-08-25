@@ -11,6 +11,9 @@ from stats import build_monthly_volume, build_charts_stats, _monthly_cache, _cha
 from recommend import build_recommendations, _reco_cache, _RECO_TTL
 from data_ingestion import ingest_data
 from get_cluster_complaints import get_cluster_complaints
+from cluster import run_pipeline, needs_reclustering
+
+_clusters_cache: dict = {"data": None}
 
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 REQUIRED_CSV_COLUMNS = ["date_created", "complaint"]
@@ -99,6 +102,7 @@ async def ingestion(file: UploadFile | None = File(None)):
     for cache in (_monthly_cache, _charts_cache, _reco_cache):
         cache["data" if "data" in cache else "recs"] = None
         cache["expires_at"] = 0
+    _clusters_cache["data"] = None
     return IngestionResponse(inserted=inserted)
 
 
@@ -164,33 +168,30 @@ def descriptive_stats_charts():
 
 @app.get("/clusters", response_model=list[ClusterResponse])
 def clusters():
-    """
-    Complaint cluster listing endpoint.
+    """Return all complaint clusters, reclustering first if new complaints have been ingested."""
+    if _clusters_cache["data"] is not None:
+        return _clusters_cache["data"]
 
-    Input:  None — no query or path parameters.
-    Returns: A list of ClusterResponse objects, each containing an id, title,
-             representative anonymised complaint text, and complaint count for
-             one semantic cluster.
-    Processing: Recomputes the complaint clusters, then reads the resulting
-                cluster documents from Firestore and maps their canonical fields
-                to the public response contract.
-    Ownership: API layer (api.py) — pending integration with the clustering
-               pipeline (cluster.py:cluster_complaints /
-               cluster.py:compile_semantic_averages).
-    """
-    # TODO, get caching behaviour
-    # cluster_complaints()
+    try:
+        if needs_reclustering():
+            run_pipeline()
+        cluster_docs = db.collection("clusters").stream()
+        result = [
+            ClusterResponse(
+                id=str(cluster.get("cluster_label")),
+                title=cluster.get("cluster_title"),
+                text=cluster.get("cluster_body"),
+                count=cluster.get("cluster_size"),
+            )
+            for cluster in cluster_docs
+        ]
+    except Exception as exc:
+        import traceback
+        print(f"ERROR clusters: {exc}\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail={"error": "Something went wrong."})
 
-    cluster_docs = db.collection("clusters").stream()
-    return [
-        ClusterResponse(
-            id=str(cluster.get("cluster_label")),
-            title=cluster.get("cluster_title"),
-            text=cluster.get("cluster_body"),
-            count=cluster.get("cluster_size"),
-        )
-        for cluster in cluster_docs
-    ]
+    _clusters_cache["data"] = result
+    return result
 
 
 @app.get("/clusters/{cluster_id}/complaints", response_model=list[ComplaintResponse])
