@@ -49,11 +49,10 @@ def _month_range(start: str, end: str) -> list[str]:
     """
     Generate every calendar month between two periods, inclusive.
 
-    Input:  start — a "YYYY-MM" string representing the first month to include.
-            end   — a "YYYY-MM" string representing the last month to include.
-    Returns: An ordered list of "YYYY-MM" strings covering every month from
-             start through end, with no gaps. If start == end then the list has one
-             element.
+    Input: start — a "YYYY-MM" string representing the first month to include.
+        end   — a "YYYY-MM" string representing the last month to include.
+    Return: An ordered list of "YYYY-MM" strings covering every month from
+    start through end, with no gaps. If start == end then the list has one element.
     Processing: Pure arithmetic.
     """
     sy, sm = int(start[:4]), int(start[5:7])
@@ -74,20 +73,23 @@ def _classify_batch(batch: list[dict]) -> list[dict]:
     Classify a batch of complaints by severity, channel, and retailer using
     the Gemini LLM.
 
-    Input:  client — an initialised google.genai.Client pointed at Vertex AI.
-            batch  — a list of complaint dicts; each dict must contain a "body"
-                     key with the raw complaint text. At most 50 items should
-                     be passed to stay within the prompt token budget.
-    Returns: A list of dicts in the same order as batch, each containing:
+    Format the batch (eventually truncate) -> inject into prompt ->
+    -> call LLM (JSON response) -> parse -> validate -> append to the result.
+    I hate this function. It is a mess. I am sorry. I will try to make it better later. (Autocompleted after first sentence lmao.)
+
+    Input: batch  — a list of complaint dicts;
+    each dict must contain a "body" key with the raw complaint text.
+    At most 50 items should be passed to stay within the prompt token budget.
+
+    Return: A list of dicts in the same order as batch, each containing:
                "severity" — one of "critical", "high", "medium", "low"
                "channel"  — one of "online", "in_person"
-               "retailer" — a lowercase canonical retailer identifier, or
-                            "unknown" if no retailer is mentioned.
-             Values outside the allowed sets are normalised to their respective
-             defaults ("low", "online", "unknown").
-    Processing: Format the batch (eventually truncate) -> inject into prompt ->
-    -> call LLM (JSON response) -> parse -> validate -> append to the result.
+               "retailer" — a lowercase canonical retailer identifier, or "unknown" if no retailer is mentioned.
+               Values outside the allowed sets are normalised to their respective
+               defaults ("low", "online", "unknown").
+
     """
+
     bodies = "\n".join(
         f"[{i + 1}] {c['body'][:300]}" for i, c in enumerate(batch)
     )
@@ -125,6 +127,10 @@ def _classify_batch(batch: list[dict]) -> list[dict]:
 
 
 def classify_all(records: list[dict], unclassified_idx: list[int]):
+    """
+    Classify all unclassified complaints in the records in batches.
+    """
+
     bodies = [{"body": records[i]["body"]} for i in unclassified_idx]
     new_cls: list[dict] = []
     for i in range(0, len(bodies), 50):
@@ -133,35 +139,9 @@ def classify_all(records: list[dict], unclassified_idx: list[int]):
     return new_cls
 
 
-def build_monthly_volume() -> MonthlyVolumeResponse:
-    docs = list(db.collection("complaints").stream())
-    total = len(docs)
-    now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-    month_counts: dict[str, int] = defaultdict(int)
-    for d in docs:
-        data = d.to_dict() or {}
-        dc = data.get("date_created")
-        if dc and len(dc) >= 7:
-            month_counts[dc[:7]] += 1
-
-    if month_counts:
-        min_period = min(month_counts)
-        cur_period = datetime.now(timezone.utc).strftime("%Y-%m")
-        periods = _month_range(min_period, cur_period)
-    else:
-        periods = []
-    monthly_volume = [MonthlyVolume(period=p, value=month_counts.get(p, 0)) for p in periods]
-
-    return MonthlyVolumeResponse(
-        updated_at=now_utc,
-        total_complaints=total,
-        monthly_volume=monthly_volume,
-    )
-
 def crawl_database(docs: list) -> tuple[list[dict], list[int]]:
     """
-    Fetch database records, parse and identify unclassified complants
+    Fetch database records, parse and identify unclassified complaints
     """
 
     records: list[dict] = []
@@ -204,7 +184,10 @@ def update_classifications(records: list[dict], unclassified_idx: list[int], new
         batch.commit()
 
 def to_items(counts: dict, order: list[str]) -> list[StatItem]:
-    """Round percentages while preserving an exact 100% total."""
+    """
+    Round percentages while preserving an exact 100% total.
+    """
+
     if total == 0:
         return [StatItem(id=k, value=counts.get(k, 0), percentage=0) for k in order]
 
@@ -238,14 +221,33 @@ def validate_records(records: list[dict]):
         if not r["retailer"]:
             r["retailer"] = "unknown"
 
+def count_occurrences(records: list[dict]) -> tuple[dict[str, int], dict[str, int], dict[str, int]]:
+    """
+    Count occurrences of severity, channel and retailer in the records
+    """
+
+    sev_counts: dict[str, int] = defaultdict(int)
+    ch_counts: dict[str, int] = defaultdict(int)
+    ret_counts: dict[str, int] = defaultdict(int)
+
+    for r in records:
+        sev_counts[r["severity"]] += 1
+        ch_counts[r["channel"]] += 1
+        ret_counts[r["retailer"]] += 1
+
+    return sev_counts, ch_counts, ret_counts
+
 
 def build_charts_stats() -> ChartsStatsResponse:
+    """
+    Build the charts statistics, interface function
+    """
+
     now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     docs = list(db.collection("complaints").stream())
 
-    global total
+    global total, safe_total
     total = len(docs)
-    global safe_total
     safe_total = max(total, 1)
 
     records, unclassified_idx = crawl_database(docs)
@@ -255,14 +257,7 @@ def build_charts_stats() -> ChartsStatsResponse:
 
     validate_records(records)
 
-    sev_counts: dict[str, int] = defaultdict(int)
-    ch_counts: dict[str, int] = defaultdict(int)
-    ret_counts: dict[str, int] = defaultdict(int)
-    for r in records:
-        sev_counts[r["severity"]] += 1
-        ch_counts[r["channel"]] += 1
-        ret_counts[r["retailer"]] += 1
-
+    sev_counts, ch_counts, ret_counts = count_occurrences(records)
 
     retailers = to_items(ret_counts, [k for k, _ in sorted(ret_counts.items(), key=lambda x: -x[1])])
 
@@ -271,4 +266,37 @@ def build_charts_stats() -> ChartsStatsResponse:
         severity=to_items(sev_counts, _SEV_ORDER),
         channels=to_items(ch_counts, _CH_ORDER),
         retailers=retailers,
+    )
+
+
+def build_monthly_volume() -> MonthlyVolumeResponse:
+    """
+    Build the monthly volume statistics, decoupled from the charts stats to allow for efficiency.
+    """
+
+    docs = list(db.collection("complaints").stream())
+    now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    global total
+    total = len(docs)
+
+    month_counts: dict[str, int] = defaultdict(int)
+    for d in docs:
+        data = d.to_dict() or {}
+        dc = data.get("date_created")
+        if dc and len(dc) >= 7:
+            month_counts[dc[:7]] += 1
+
+    if month_counts:
+        min_period = min(month_counts)
+        cur_period = datetime.now(timezone.utc).strftime("%Y-%m")
+        periods = _month_range(min_period, cur_period)
+    else:
+        periods = []
+    monthly_volume = [MonthlyVolume(period=p, value=month_counts.get(p, 0)) for p in periods]
+
+    return MonthlyVolumeResponse(
+        updated_at=now_utc,
+        total_complaints=total,
+        monthly_volume=monthly_volume,
     )
