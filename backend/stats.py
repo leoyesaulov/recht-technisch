@@ -5,6 +5,7 @@ from google.genai import types
 from collections import defaultdict
 from datetime import datetime, timezone
 from shared import MonthlyVolumeResponse, ChartsStatsResponse, MonthlyVolume, StatItem, genai_client
+from anonymize import anonymize
 
 safe_total: int
 total: int
@@ -91,8 +92,9 @@ def _classify_batch(batch: list[dict]) -> list[dict]:
     """
 
     bodies = "\n".join(
-        f"[{i + 1}] {c['body'][:300]}" for i, c in enumerate(batch)
+        f"[{i + 1}] {anonymize('', c['body'])[1][:300]}" for i, c in enumerate(batch)
     )
+    print(f"[classify] sending {len(batch)} complaints to LLM:\n{bodies}\n")
     last_error: Exception | None = None
     for _ in range(3):
         response = genai_client.models.generate_content(
