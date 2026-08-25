@@ -15,6 +15,16 @@ from cluster import run_pipeline, needs_reclustering
 
 _clusters_cache: dict = {"data": None}
 
+
+def _invalidate_all_caches() -> None:
+    _monthly_cache["data"] = None
+    _monthly_cache["expires_at"] = 0.0
+    _charts_cache["data"] = None
+    _charts_cache["expires_at"] = 0.0
+    _reco_cache["recs"] = None
+    _reco_cache["expires_at"] = 0.0
+    _clusters_cache["data"] = None
+
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 REQUIRED_CSV_COLUMNS = ["date_created", "complaint"]
 
@@ -98,11 +108,7 @@ async def ingestion(file: UploadFile | None = File(None)):
         print(f"ERROR ingestion: {exc}\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail="Something went wrong.") from exc
 
-    # All dashboard aggregates are derived from complaints and must be rebuilt.
-    for cache in (_monthly_cache, _charts_cache, _reco_cache):
-        cache["data" if "data" in cache else "recs"] = None
-        cache["expires_at"] = 0
-    _clusters_cache["data"] = None
+    _invalidate_all_caches()
     return IngestionResponse(inserted=inserted)
 
 
