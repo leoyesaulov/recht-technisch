@@ -1,8 +1,11 @@
+from google import genai
 from typing import Literal
 from pydantic import BaseModel
 from google.cloud import firestore
 
 db = firestore.Client(project="recht-technisch", database="complaints")
+genai_client = genai.Client(vertexai=True, project="recht-technisch", location="europe-west1")
+
 
 class MonthlyVolume(BaseModel):
     period: str  # "YYYY-MM"

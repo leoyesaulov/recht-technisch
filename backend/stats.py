@@ -4,7 +4,10 @@ from google import genai
 from google.genai import types
 from collections import defaultdict
 from datetime import datetime, timezone
-from shared import MonthlyVolumeResponse, ChartsStatsResponse, MonthlyVolume, StatItem
+from shared import MonthlyVolumeResponse, ChartsStatsResponse, MonthlyVolume, StatItem, genai_client
+
+safe_total: int
+total: int
 
 _monthly_cache: dict = {"data": None, "expires_at": 0.0}
 _charts_cache: dict = {"data": None, "expires_at": 0.0}
@@ -49,15 +52,9 @@ def _month_range(start: str, end: str) -> list[str]:
     Input:  start — a "YYYY-MM" string representing the first month to include.
             end   — a "YYYY-MM" string representing the last month to include.
     Returns: An ordered list of "YYYY-MM" strings covering every month from
-             start through end, with no gaps. If start == end the list has one
+             start through end, with no gaps. If start == end then the list has one
              element.
-    Processing: Pure arithmetic — parses year and month integers from the two
-                strings, then increments a (year, month) counter in a loop,
-                rolling the month back to 1 and incrementing the year when
-                month exceeds 12. No I/O is performed.
-    Ownership: stats.py — calendar utility used by build_monthly_volume to fill
-               months that have zero complaints so the monthly volume series is
-               contiguous.
+    Processing: Pure arithmetic.
     """
     sy, sm = int(start[:4]), int(start[5:7])
     ey, em = int(end[:4]), int(end[5:7])
@@ -72,7 +69,7 @@ def _month_range(start: str, end: str) -> list[str]:
     return result
 
 
-def _classify_batch(client, batch: list[dict]) -> list[dict]:
+def _classify_batch(batch: list[dict]) -> list[dict]:
     """
     Classify a batch of complaints by severity, channel, and retailer using
     the Gemini LLM.
@@ -88,20 +85,15 @@ def _classify_batch(client, batch: list[dict]) -> list[dict]:
                             "unknown" if no retailer is mentioned.
              Values outside the allowed sets are normalised to their respective
              defaults ("low", "online", "unknown").
-    Processing: Formats the batch into a numbered list (truncating each body to
-                300 characters), injects it into _CLASSIFY_PROMPT, and calls
-                gemini-2.5-flash-lite with JSON response mode. The raw JSON
-                array is parsed; each item's fields are validated against their
-                allowed value sets before being appended to the result.
-    Ownership: stats.py — LLM classification helper, called exclusively by
-               build_charts_stats in batches of up to 50 complaints.
+    Processing: Format the batch (eventually truncate) -> inject into prompt ->
+    -> call LLM (JSON response) -> parse -> validate -> append to the result.
     """
     bodies = "\n".join(
         f"[{i + 1}] {c['body'][:300]}" for i, c in enumerate(batch)
     )
     last_error: Exception | None = None
     for _ in range(3):
-        response = client.models.generate_content(
+        response = genai_client.models.generate_content(
             model="gemini-2.5-flash",
             contents=_CLASSIFY_PROMPT.format(bodies=bodies),
             config=types.GenerateContentConfig(
@@ -132,6 +124,15 @@ def _classify_batch(client, batch: list[dict]) -> list[dict]:
     raise ValueError("Classifier returned invalid JSON after three attempts") from last_error
 
 
+def classify_all(records: list[dict], unclassified_idx: list[int]):
+    bodies = [{"body": records[i]["body"]} for i in unclassified_idx]
+    new_cls: list[dict] = []
+    for i in range(0, len(bodies), 50):
+        new_cls.extend(_classify_batch(bodies[i: i + 50]))
+
+    return new_cls
+
+
 def build_monthly_volume() -> MonthlyVolumeResponse:
     docs = list(db.collection("complaints").stream())
     total = len(docs)
@@ -158,11 +159,10 @@ def build_monthly_volume() -> MonthlyVolumeResponse:
         monthly_volume=monthly_volume,
     )
 
-
-def build_charts_stats() -> ChartsStatsResponse:
-    docs = list(db.collection("complaints").stream())
-    total = len(docs)
-    now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+def crawl_database(docs: list) -> tuple[list[dict], list[int]]:
+    """
+    Fetch database records, parse and identify unclassified complants
+    """
 
     records: list[dict] = []
     unclassified_idx: list[int] = []
@@ -183,25 +183,52 @@ def build_charts_stats() -> ChartsStatsResponse:
         if not classified:
             unclassified_idx.append(len(records) - 1)
 
-    if unclassified_idx:
-        genai_client = genai.Client(vertexai=True, project="recht-technisch", location="europe-west1")
-        bodies = [{"body": records[i]["body"]} for i in unclassified_idx]
-        new_cls: list[dict] = []
-        for i in range(0, len(bodies), 50):
-            new_cls.extend(_classify_batch(genai_client, bodies[i : i + 50]))
+    return records, unclassified_idx
 
-        batch = db.batch()
-        ops = 0
-        for doc_idx, cls in zip(unclassified_idx, new_cls):
-            records[doc_idx].update(cls)
-            batch.update(records[doc_idx]["ref"], cls)
-            ops += 1
-            if ops == 500:
-                batch.commit()
-                batch = db.batch()
-                ops = 0
-        if ops:
+def update_classifications(records: list[dict], unclassified_idx: list[int], new_cls: list[dict]):
+    """
+    Update the database with new classifications for unclassified complaints
+    """
+
+    batch = db.batch()
+    ops = 0
+    for doc_idx, cls in zip(unclassified_idx, new_cls):
+        records[doc_idx].update(cls)
+        batch.update(records[doc_idx]["ref"], cls)
+        ops += 1
+        if ops == 500:
             batch.commit()
+            batch = db.batch()
+            ops = 0
+    if ops:
+        batch.commit()
+
+def to_items(counts: dict, order: list[str]) -> list[StatItem]:
+    """Round percentages while preserving an exact 100% total."""
+    if total == 0:
+        return [StatItem(id=k, value=counts.get(k, 0), percentage=0) for k in order]
+
+    items: list[StatItem] = []
+    assigned_percentage = 0.0
+    for k in order[:-1]:
+        value = counts.get(k, 0)
+        percentage = round(value / safe_total * 100, 1)
+        items.append(StatItem(id=k, value=value, percentage=percentage))
+        assigned_percentage += percentage
+
+    if order:
+        k = order[-1]
+        items.append(StatItem(
+            id=k,
+            value=counts.get(k, 0),
+            percentage=round(100 - assigned_percentage, 1),
+        ))
+    return items
+
+def validate_records(records: list[dict]):
+    """
+    Validate and normalise all records
+    """
 
     for r in records:
         if r["severity"] not in _SEV_ORDER:
@@ -211,6 +238,23 @@ def build_charts_stats() -> ChartsStatsResponse:
         if not r["retailer"]:
             r["retailer"] = "unknown"
 
+
+def build_charts_stats() -> ChartsStatsResponse:
+    now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    docs = list(db.collection("complaints").stream())
+
+    global total
+    total = len(docs)
+    global safe_total
+    safe_total = max(total, 1)
+
+    records, unclassified_idx = crawl_database(docs)
+    if unclassified_idx:
+        new_cls = classify_all(records, unclassified_idx)
+        update_classifications(records, unclassified_idx, new_cls)
+
+    validate_records(records)
+
     sev_counts: dict[str, int] = defaultdict(int)
     ch_counts: dict[str, int] = defaultdict(int)
     ret_counts: dict[str, int] = defaultdict(int)
@@ -219,29 +263,6 @@ def build_charts_stats() -> ChartsStatsResponse:
         ch_counts[r["channel"]] += 1
         ret_counts[r["retailer"]] += 1
 
-    safe_total = max(total, 1)
-
-    def to_items(counts: dict, order: list[str]) -> list[StatItem]:
-        """Round percentages while preserving an exact 100% total."""
-        if total == 0:
-            return [StatItem(id=k, value=counts.get(k, 0), percentage=0) for k in order]
-
-        items: list[StatItem] = []
-        assigned_percentage = 0.0
-        for k in order[:-1]:
-            value = counts.get(k, 0)
-            percentage = round(value / safe_total * 100, 1)
-            items.append(StatItem(id=k, value=value, percentage=percentage))
-            assigned_percentage += percentage
-
-        if order:
-            k = order[-1]
-            items.append(StatItem(
-                id=k,
-                value=counts.get(k, 0),
-                percentage=round(100 - assigned_percentage, 1),
-            ))
-        return items
 
     retailers = to_items(ret_counts, [k for k, _ in sorted(ret_counts.items(), key=lambda x: -x[1])])
 
