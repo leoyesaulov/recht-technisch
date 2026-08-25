@@ -12,6 +12,7 @@ from recommend import build_recommendations, _reco_cache, _RECO_TTL
 from data_ingestion import ingest_data
 from get_cluster_complaints import get_cluster_complaints
 from cluster import run_pipeline, needs_reclustering
+from retention import purge_expired_complaints
 
 _clusters_cache: dict = {"data": None}
 
@@ -131,6 +132,8 @@ def descriptive_stats_monthly_volume():
     now = time.time()
     if _monthly_cache["data"] is not None and now < _monthly_cache["expires_at"]:
         return _monthly_cache["data"]
+    if purge_expired_complaints() > 0:
+        _invalidate_all_caches()
     try:
         result = build_monthly_volume()
     except Exception as exc:
@@ -161,6 +164,8 @@ def descriptive_stats_charts():
     now = time.time()
     if _charts_cache["data"] is not None and now < _charts_cache["expires_at"]:
         return _charts_cache["data"]
+    if purge_expired_complaints() > 0:
+        _invalidate_all_caches()
     try:
         result = build_charts_stats()
     except Exception as exc:
@@ -177,6 +182,8 @@ def clusters():
     """Return all complaint clusters, reclustering first if new complaints have been ingested."""
     if _clusters_cache["data"] is not None:
         return _clusters_cache["data"]
+    if purge_expired_complaints() > 0:
+        _invalidate_all_caches()
 
     try:
         if needs_reclustering():
