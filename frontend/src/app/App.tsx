@@ -44,14 +44,22 @@ const FMONO    = "'DM Mono', monospace";
 const CHANNEL_COLORS = [RED, "#D0CDC8"];
 const SEVERITY_COLORS = [RED, "#E8432D", "#C4973A", "#C8C4BC"];
 
-const clusterIcons: Record<string, typeof Clock> = {
-  delivery_delays: Clock,
-  product_quality: ShoppingCart,
-  customer_service: Headphones,
-  billing_issues: CreditCard,
-  app_web_bugs: Smartphone,
-  return_process: RotateCcw,
-};
+const CLUSTER_ICON_KEYWORDS: Array<[typeof Clock, string[]]> = [
+  [Clock,        ["liefer", "versand", "verzöger", "verspät", "lieferzeit", "wartezeit"]],
+  [ShoppingCart, ["produkt", "qualität", "ware", "defekt", "mangel", "beschädig", "artikel"]],
+  [Headphones,   ["service", "beratung", "hotline", "support", "kontakt", "mitarbeiter"]],
+  [CreditCard,   ["rechnung", "zahlung", "abrechnung", "preis", "gebühr", "erstattung", "kosten"]],
+  [Smartphone,   ["app", "website", "online", "technisch", "fehler", "software", "digital"]],
+  [RotateCcw,    ["rückgabe", "rücksendung", "retour", "umtausch", "retoure"]],
+];
+
+function clusterIcon(title: string): typeof Clock {
+  const lower = title.toLowerCase();
+  for (const [Icon, keywords] of CLUSTER_ICON_KEYWORDS) {
+    if (keywords.some((kw) => lower.includes(kw))) return Icon;
+  }
+  return Clock;
+}
 const severityNames: Record<string, string> = { critical: "Kritisch", high: "Hoch", medium: "Mittel", low: "Niedrig" };
 const channelNames: Record<string, string> = { online: "Online", in_person: "Vor Ort" };
 const recommendationGroups = {
@@ -712,7 +720,7 @@ export default function App() {
         >
           {clusters.map((c, index) => {
             const isHov = hovered === index;
-            const ClusterIcon = clusterIcons[c.id] ?? Clock;
+            const ClusterIcon = clusterIcon(c.title);
             return (
               <div
                 key={c.id}
@@ -804,7 +812,7 @@ export default function App() {
                           color: INK,
                         }}
                       >
-                        {c.title.toUpperCase()}
+                        {c.title.toLocaleUpperCase("de-DE")}
                       </span>
                     </div>
                   </div>
