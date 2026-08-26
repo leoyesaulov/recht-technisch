@@ -11,19 +11,19 @@ Team `Recht Technisch`'s pilot project at Legal Loves Tech Hackathon 2026
 
 ## Design
 
-- There will be no stage / test / local environment. Everything will run in prod to reduce development compexity.
+- There will be no stage / test / local environment. Everything will run in prod as a Google Cloud Run instance to reduce development compexity.
 - Each complaint is forcefully assigned to a singular cluster. Reason: simplify clustering
 - Noise clusters are intentionally dropped.
 - There is some protection against prompt injection (regex matching + system instruction architecture)
+- Backend employs strict IAM authentication, which is handled natively in prod (Google Run environment)
+- Frontend is rendered client-side, but proxies all requests to mint them with auth tokens.
 
 ### Architecture
 
-* python + FastAPI
-* Google Firestore
-* Google Bucket (for agents)
-* Google Vertex AI (gemini-embedding-001)
-* Google Vertex AI Agent Engine
-* Typescript + Vite
+* Backend: python + FastAPI
+* Frontend: Typescript + Vite
+* Database: Google Firestore
+* AI: Google Vertex AI (Gemini LLM + embedding model)
 
 ## Run
 
