@@ -215,6 +215,7 @@ Complaints begin:
 {complaint_text}
 ---
 Complaints end.'''
+            contents = anonymize("", complaint_text)[1]
             summary = _generate_cluster_summary(genai_client, system_instruction, contents, label)
             clusters.document(cluster_document.id).update({"cluster_title": summary.title, "cluster_body": summary.body, "cluster_coherentness": summary.coherentness})
             logger.info("compile_semantic_averages: cluster %d -- summary written (coherentness=%.2f)", label, summary.coherentness)

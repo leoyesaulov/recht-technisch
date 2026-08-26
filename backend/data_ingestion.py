@@ -31,6 +31,7 @@ from google.cloud import firestore
 from google.genai import errors
 from google.genai.types import EmbedContentConfig
 
+from anonymize import anonymize
 from shared import db, genai_client
 
 logger = logging.getLogger(__name__)
@@ -113,7 +114,7 @@ def ingest_data(raw_complaints: Sequence[Mapping[str, object]]) -> int:
 
         logger.info("ingest_data: embedding %d complaints via Gemini", len(clean_complaints))
         for complaint in clean_complaints:
-            response = _embed_with_backoff(complaint["body"])
+            response = _embed_with_backoff(anonymize("", complaint["body"])[1])
             if len(response.embeddings) != 1:
                 raise ValueError(
                     "Expected exactly one embedding per complaint, "
