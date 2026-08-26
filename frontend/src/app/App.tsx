@@ -287,8 +287,8 @@ export default function App() {
     });
     load("statsVolume", getMonthlyVolumeStats(controller.signal), setMonthlyVolumeStats);
     load("statsCharts", getChartsStats(controller.signal), setChartsStats);
-    load("clusters", getClusters(controller.signal), setClusters);
-    load("recommendations", getRecommendations(controller.signal), setRecommendationItems);
+    load("clusters", getClusters(controller.signal), setClusters)
+      .then(() => load("recommendations", getRecommendations(controller.signal), setRecommendationItems));
     return () => controller.abort();
   }, []);
 
