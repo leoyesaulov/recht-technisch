@@ -82,7 +82,7 @@ def needs_reclustering() -> bool:
 def run_pipeline() -> None:
     """Run the full clustering pipeline and record the high-water mark."""
     logger.info("run_pipeline: starting clustering pipeline")
-    cluster_complaints()
+    cluster_complaints(min_samples=None)
     compile_semantic_averages()
     db.collection("metadata").document("clustering").set(
         {"last_clustered_max_id": _get_max_complaint_id()},
@@ -91,7 +91,7 @@ def run_pipeline() -> None:
     logger.info("run_pipeline: pipeline complete")
 
 
-def cluster_complaints(min_samples: int = 3, min_cluster_size: int = 10) -> None:
+def cluster_complaints(min_samples: int | None = 3, min_cluster_size: int = 10) -> None:
     """Cluster stored complaint embeddings and write labels and cluster sizes."""
     complaints = db.collection("complaints")
     documents = list(complaints.select(["embedding"]).stream())
