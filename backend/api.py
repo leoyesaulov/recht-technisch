@@ -181,7 +181,7 @@ def descriptive_stats_charts():
 @app.get("/clusters", response_model=list[ClusterResponse])
 def clusters():
     """Return all complaint clusters, reclustering first if new complaints have been ingested."""
-    if _clusters_cache["data"] is not None:
+    if _clusters_cache["data"] is not None and time.time() < _clusters_cache.get("expires_at", 0):
         return _clusters_cache["data"]
     if purge_expired_complaints() > 0:
         _invalidate_all_caches()
@@ -206,6 +206,7 @@ def clusters():
         raise HTTPException(status_code=500, detail={"error": "Something went wrong."})
 
     _clusters_cache["data"] = result
+    _clusters_cache["expires_at"] = time.time() + _CACHE_TTL
     return result
 
 
