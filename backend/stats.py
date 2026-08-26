@@ -7,8 +7,6 @@ from datetime import datetime, timezone
 from shared import MonthlyVolumeResponse, ChartsStatsResponse, MonthlyVolume, StatItem, genai_client
 from anonymize import anonymize, sanitize_for_prompt
 
-safe_total: int
-total: int
 
 _monthly_cache: dict = {"data": None, "expires_at": 0.0}
 _charts_cache: dict = {"data": None, "expires_at": 0.0}
@@ -183,11 +181,12 @@ def update_classifications(records: list[dict], unclassified_idx: list[int], new
     if ops:
         batch.commit()
 
-def to_items(counts: dict, order: list[str]) -> list[StatItem]:
+def to_items(counts: dict, order: list[str], total: int) -> list[StatItem]:
     """
     Round percentages while preserving an exact 100% total.
     """
 
+    safe_total = max(total, 1)
     if total == 0:
         return [StatItem(id=k, value=counts.get(k, 0), percentage=0) for k in order]
 
@@ -246,9 +245,7 @@ def build_charts_stats() -> ChartsStatsResponse:
     now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     docs = list(db.collection("complaints").stream())
 
-    global total, safe_total
     total = len(docs)
-    safe_total = max(total, 1)
 
     records, unclassified_idx = crawl_database(docs)
     if unclassified_idx:
@@ -259,12 +256,12 @@ def build_charts_stats() -> ChartsStatsResponse:
 
     sev_counts, ch_counts, ret_counts = count_occurrences(records)
 
-    retailers = to_items(ret_counts, [k for k, _ in sorted(ret_counts.items(), key=lambda x: -x[1])])
+    retailers = to_items(ret_counts, [k for k, _ in sorted(ret_counts.items(), key=lambda x: -x[1])], total)
 
     return ChartsStatsResponse(
         updated_at=now_utc,
-        severity=to_items(sev_counts, _SEV_ORDER),
-        channels=to_items(ch_counts, _CH_ORDER),
+        severity=to_items(sev_counts, _SEV_ORDER, total),
+        channels=to_items(ch_counts, _CH_ORDER, total),
         retailers=retailers,
     )
 
@@ -277,7 +274,6 @@ def build_monthly_volume() -> MonthlyVolumeResponse:
     docs = list(db.collection("complaints").stream())
     now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    global total
     total = len(docs)
 
     month_counts: dict[str, int] = defaultdict(int)
