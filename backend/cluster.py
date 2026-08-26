@@ -1,9 +1,9 @@
 """Cluster embedded complaints and generate Firestore cluster summaries.
 
-The module reads embeddings from ``complaints`` and forcefully assigns each
-complaint to one HDBSCAN label. Noise labels (``-1``) are deliberately excluded
-from the ``clusters`` collection. Each cluster document is a snapshot of the
-latest clustering run and has this shape:
+The module reads embeddings from ``complaints``, L2-normalizes them, and
+forcefully assigns each complaint to one K-means label. K is derived from the
+number of complaints and the requested target cluster size. Each cluster
+document is a snapshot of the latest clustering run and has this shape:
 ```
 {
     "cluster_label": integer (>= 0),
@@ -28,7 +28,8 @@ from google.genai import types
 from google.cloud import firestore as _firestore
 from google.cloud.firestore_v1.base_query import FieldFilter
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
-from sklearn.cluster import HDBSCAN
+from sklearn.cluster import KMeans
+from sklearn.preprocessing import normalize
 
 from shared import db
 from anonymize import anonymize, sanitize_for_prompt
@@ -82,7 +83,7 @@ def needs_reclustering() -> bool:
 def run_pipeline() -> None:
     """Run the full clustering pipeline and record the high-water mark."""
     logger.info("run_pipeline: starting clustering pipeline")
-    cluster_complaints(min_samples=None)
+    cluster_complaints()
     compile_semantic_averages()
     db.collection("metadata").document("clustering").set(
         {"last_clustered_max_id": _get_max_complaint_id()},
@@ -91,8 +92,15 @@ def run_pipeline() -> None:
     logger.info("run_pipeline: pipeline complete")
 
 
-def cluster_complaints(min_samples: int | None = 3, min_cluster_size: int = 10) -> None:
-    """Cluster stored complaint embeddings and write labels and cluster sizes."""
+def cluster_complaints(target_cluster_size: int = 6) -> None:
+    """L2-normalize stored embeddings, cluster them with K-means, and store labels.
+
+    ``target_cluster_size`` determines K as ``max(1, n // target_cluster_size)``.
+    K-means has no noise class, so every complaint belongs to exactly one cluster.
+    """
+    if target_cluster_size < 1:
+        raise ValueError("target_cluster_size must be at least 1")
+
     complaints = db.collection("complaints")
     documents = list(complaints.select(["embedding"]).stream())
 
@@ -102,20 +110,28 @@ def cluster_complaints(min_samples: int | None = 3, min_cluster_size: int = 10) 
         batch.delete(cluster_document.reference)
     batch.commit()
 
+    if not documents:
+        logger.info("cluster_complaints: no embeddings to cluster")
+        return
+
     embeddings = [document.get("embedding") for document in documents]
-    logger.info("cluster_complaints: fetched %d embeddings; running HDBSCAN", len(documents))
-    results = HDBSCAN(min_samples=min_samples, min_cluster_size=min_cluster_size).fit(embeddings)
+    normalized_embeddings = normalize(embeddings, norm="l2")
+    logger.info(
+        "cluster_complaints: fetched %d embeddings; running L2-normalized K-means with k=%d",
+        len(documents),
+        target_cluster_size,
+    )
+    results = KMeans(n_clusters=target_cluster_size, random_state=0, n_init="auto").fit(normalized_embeddings)
     labels = [int(label) for label in results.labels_]
 
-    for document, label, probability in zip(documents, labels, results.probabilities_, strict=True):
-        document.reference.update({"cluster_label": label, "cluster_prob": float(probability)})
+    for document, label in zip(documents, labels, strict=True):
+        document.reference.update({"cluster_label": label, "cluster_prob": 1.0})
 
     cluster_sizes = {}
     for label in labels:
-        if label >= 0:
-            cluster_sizes[label] = cluster_sizes.get(label, 0) + 1
+        cluster_sizes[label] = cluster_sizes.get(label, 0) + 1
 
-    logger.info("cluster_complaints: HDBSCAN complete -- %d clusters, %d noise points", len(cluster_sizes), labels.count(-1))
+    logger.info("cluster_complaints: K-means complete -- %d clusters", len(cluster_sizes))
     for label, count in cluster_sizes.items():
         db.collection("clusters").document(f"cluster_{label}").set({"cluster_label": label, "cluster_size": count})
 
@@ -172,7 +188,7 @@ def compile_semantic_averages() -> None:
         for cluster_document in clusters.stream():
             label = cluster_document.to_dict()["cluster_label"]
             cluster_complaints = list(complaints.where(filter=FieldFilter("cluster_label", "==", label)).stream())
-            sample_size = min(10, max(3, ceil(len(cluster_complaints) * 0.3)))
+            sample_size = min(1, ceil(len(cluster_complaints) * 0.5))
             logger.info("compile_semantic_averages: cluster %d -- %d/%d complaints sampled", label, sample_size, len(cluster_complaints))
             sample = random.sample(cluster_complaints, sample_size)
             complaint_text = ("\n" + "=" * 30 + "\n").join(
@@ -209,5 +225,9 @@ Complaints end.'''
 
 if __name__ == "__main__":
     print("Start clustering pipeline")
-    compile_semantic_averages()
+    cluster_complaints()
     print("Finished clustering pipeline successfully")
+
+    print("Start compilation of semantic averages")
+    compile_semantic_averages()
+    print("Finished semantic averages successfully")
