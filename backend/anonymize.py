@@ -149,13 +149,12 @@ def _apply_entities(
     return "".join(parts)
 
 
-def anonymize(title: str, body: str) -> tuple[str, str]:
+def anonymize(body: str) -> str:
     """Replace PII entities with consistent labels across title and body."""
     entity_map: dict[str, str] = {}
     counts: dict[str, int] = {}
-    anon_title = _apply_entities(title, _find_spans(title), entity_map, counts)
     anon_body  = _apply_entities(body,  _find_spans(body),  entity_map, counts)
-    return anon_title, anon_body
+    return anon_body
 
 
 # ── Prompt-injection sanitizer ────────────────────────────────────────────────

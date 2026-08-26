@@ -192,7 +192,7 @@ def compile_semantic_averages() -> None:
             logger.info("compile_semantic_averages: cluster %d -- %d/%d complaints sampled", label, sample_size, len(cluster_complaints))
             sample = random.sample(cluster_complaints, sample_size)
             complaint_text = ("\n" + "=" * 30 + "\n").join(
-                sanitize_for_prompt(anonymize("", document.to_dict().get('body', '').strip())[1][:500])
+                sanitize_for_prompt(anonymize(document.to_dict().get('body', '').strip())[:500])
                 for document in sample
             )
             system_instruction = f'''\
@@ -215,7 +215,7 @@ Complaints begin:
 {complaint_text}
 ---
 Complaints end.'''
-            contents = anonymize("", complaint_text)[1]
+            contents = anonymize(complaint_text)
             summary = _generate_cluster_summary(genai_client, system_instruction, contents, label)
             clusters.document(cluster_document.id).update({"cluster_title": summary.title, "cluster_body": summary.body, "cluster_coherentness": summary.coherentness})
             logger.info("compile_semantic_averages: cluster %d -- summary written (coherentness=%.2f)", label, summary.coherentness)

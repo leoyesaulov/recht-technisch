@@ -114,7 +114,7 @@ def ingest_data(raw_complaints: Sequence[Mapping[str, object]]) -> int:
 
         logger.info("ingest_data: embedding %d complaints via Gemini", len(clean_complaints))
         for complaint in clean_complaints:
-            response = _embed_with_backoff(anonymize("", complaint["body"])[1])
+            response = _embed_with_backoff(anonymize(complaint["body"]))
             if len(response.embeddings) != 1:
                 raise ValueError(
                     "Expected exactly one embedding per complaint, "

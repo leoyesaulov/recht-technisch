@@ -90,7 +90,7 @@ def _classify_batch(batch: list[dict]) -> list[dict]:
     """
 
     bodies = "\n".join(
-        f"[{i + 1}] {sanitize_for_prompt(anonymize('', c['body'])[1][:300])}" for i, c in enumerate(batch)
+        f"[{i + 1}] {sanitize_for_prompt(anonymize(c['body'])[:300])}" for i, c in enumerate(batch)
     )
     last_error: Exception | None = None
     for _ in range(3):
