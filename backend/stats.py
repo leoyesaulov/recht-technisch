@@ -113,7 +113,7 @@ def _classify_batch(batch: list[dict]) -> list[dict]:
             for item in parsed:
                 if not isinstance(item, dict):
                     raise ValueError("Classifier response contains a non-object result")
-                raw_retailer = str(item.get("retailer") or "unknown").lower().strip()
+                raw_retailer = str(item.get("retailer") or "unknown").lower().title().strip()
                 result.append({
                     "severity": item.get("severity", "low") if item.get("severity") in _SEV_ORDER else "low",
                     "channel": item.get("channel", "online") if item.get("channel") in _CH_ORDER else "online",
