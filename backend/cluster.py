@@ -30,6 +30,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 from sklearn.cluster import HDBSCAN
 
 from shared import db
+from anonymize import anonymize
 
 LOCATION = "europe-west1"
 SEMANTIC_AVERAGE_MAX_ATTEMPTS = 5
@@ -167,7 +168,7 @@ def compile_semantic_averages() -> None:
             cluster_complaints = list(complaints.where(filter=FieldFilter("cluster_label", "==", label)).stream())
             sample_size = min(10, max(3, ceil(len(cluster_complaints) * 0.3)))
             sample = random.sample(cluster_complaints, sample_size)
-            complaint_text = ("\n" + "=" * 30 + "\n").join(f"{document.to_dict().get('body', '').strip()}" for document in sample)
+            complaint_text = ("\n" + "=" * 30 + "\n").join(anonymize("", document.to_dict().get('body', '').strip())[1] for document in sample)
             prompt = f'''\
 Summarize the customer complaints below.
 They are a representative sample of one calculated complaint cluster.
