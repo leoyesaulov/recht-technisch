@@ -1,4 +1,5 @@
 import json
+import logging
 from shared import db
 from google import genai
 from google.genai import types
@@ -7,6 +8,7 @@ from datetime import datetime, timezone
 from shared import MonthlyVolumeResponse, ChartsStatsResponse, MonthlyVolume, StatItem, genai_client
 from anonymize import anonymize, sanitize_for_prompt
 
+logger = logging.getLogger(__name__)
 
 _monthly_cache: dict = {"data": None, "expires_at": 0.0}
 _charts_cache: dict = {"data": None, "expires_at": 0.0}
@@ -131,7 +133,9 @@ def classify_all(records: list[dict], unclassified_idx: list[int]):
 
     bodies = [{"body": records[i]["body"]} for i in unclassified_idx]
     new_cls: list[dict] = []
-    for i in range(0, len(bodies), 50):
+    n_batches = (len(bodies) + 49) // 50
+    for batch_num, i in enumerate(range(0, len(bodies), 50), 1):
+        logger.info("classify_all: batch %d/%d (%d complaints)", batch_num, n_batches, min(50, len(bodies) - i))
         new_cls.extend(_classify_batch(bodies[i: i + 50]))
 
     return new_cls
@@ -248,9 +252,11 @@ def build_charts_stats() -> ChartsStatsResponse:
     total = len(docs)
 
     records, unclassified_idx = crawl_database(docs)
+    logger.info("build_charts_stats: %d complaints, %d unclassified", total, len(unclassified_idx))
     if unclassified_idx:
         new_cls = classify_all(records, unclassified_idx)
         update_classifications(records, unclassified_idx, new_cls)
+        logger.info("build_charts_stats: classified %d complaints via LLM", len(unclassified_idx))
 
     validate_records(records)
 

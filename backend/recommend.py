@@ -1,8 +1,11 @@
 import json
+import logging
 from shared import db, RecommendationResponse
 from google import genai
 from google.genai import types
 from anonymize import sanitize_for_prompt
+
+logger = logging.getLogger(__name__)
 
 _reco_cache: dict = {"recs": None, "expires_at": 0.0}
 _RECO_TTL = 3600  # 1 hour
@@ -60,6 +63,7 @@ def build_recommendations() -> list[RecommendationResponse]:
             rows.append(f"- {title} ({size} complaints): {body}")
 
     cluster_text = "\n".join(rows) if rows else "(no clusters available)"
+    logger.info("build_recommendations: %d eligible clusters; calling Gemini", len(rows))
 
     client = genai.Client(vertexai=True, project="recht-technisch", location="europe-west1")
     response = client.models.generate_content(
@@ -72,6 +76,7 @@ def build_recommendations() -> list[RecommendationResponse]:
         ),
     )
     parsed = json.loads(response.text)
+    logger.info("build_recommendations: recommendations generated")
 
     return [
         RecommendationResponse(id=rec_id, **parsed[rec_id])

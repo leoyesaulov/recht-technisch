@@ -1,5 +1,8 @@
+import logging
 from datetime import date, timedelta
 from shared import db
+
+logger = logging.getLogger(__name__)
 
 _RETENTION_DAYS = 365
 
@@ -13,6 +16,7 @@ def purge_expired_complaints() -> int:
 
     to_delete = expired + future
     if not to_delete:
+        logger.info("purge_expired_complaints: nothing to purge")
         return 0
 
     batch = db.batch()
@@ -28,5 +32,5 @@ def purge_expired_complaints() -> int:
     db.collection("metadata").document("clustering").set(
         {"last_clustered_max_id": 0}, merge=True
     )
-    print(f"Retention: purged {count} complaints ({len(expired)} old, {len(future)} future-dated)")
+    logger.info("purge_expired_complaints: purged %d complaints (%d expired, %d future-dated)", count, len(expired), len(future))
     return count

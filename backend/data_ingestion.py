@@ -20,6 +20,7 @@ Use :func:`ingest_data` as the single entry point for loading a source into the
 ``complaints`` Firestore collection. It raises source or validation errors to
 the caller instead of partially hiding them.
 """
+import logging
 import random
 import time
 from collections.abc import Mapping, Sequence
@@ -30,7 +31,9 @@ from google.cloud import firestore
 from google.genai import errors
 from google.genai.types import EmbedContentConfig
 
-from shared import db
+from shared import db, genai_client
+
+logger = logging.getLogger(__name__)
 
 LOCATION = "europe-west1"
 
@@ -54,13 +57,13 @@ def normalize_date_created(value: str) -> str:
     )
 
 
-def _embed_with_backoff(client: genai.Client, body: str):
+def _embed_with_backoff(body: str):
     """Embed one complaint, retrying temporary rate-limit responses."""
     max_retries = 5
 
     for attempt in range(max_retries + 1):
         try:
-            return client.models.embed_content(
+            return genai_client.models.embed_content(
                 model="gemini-embedding-001",
                 contents=body,
                 config=EmbedContentConfig(task_type="CLUSTERING", output_dimensionality=384),
@@ -70,10 +73,7 @@ def _embed_with_backoff(client: genai.Client, body: str):
                 raise
 
             delay = random.uniform(0, 2 ** attempt)
-            print(
-                f"Embedding rate-limited; retrying in {delay:.1f}s "
-                f"(attempt {attempt + 1}/{max_retries})"
-            )
+            logger.warning("embedding rate-limited; retrying in %.1f s (attempt %d/%d)", delay, attempt + 1, max_retries)
             time.sleep(delay)
     raise ValueError("Failed to embed complaint")
 
@@ -86,14 +86,14 @@ def ingest_data(raw_complaints: Sequence[Mapping[str, object]]) -> int:
     validated and embedded, so invalid input cannot leave a partial upload in
     Firestore.  It returns the number of inserted complaints.
     """
-    genai_client = None
-
     try:
         complaints = db.collection("complaints")
         clean_complaints = []
 
         if not raw_complaints:
             return 0
+
+        logger.info("ingest_data: starting ingestion of %d complaints", len(raw_complaints))
 
         for complaint in raw_complaints:
             if not isinstance(complaint, Mapping):
@@ -111,14 +111,9 @@ def ingest_data(raw_complaints: Sequence[Mapping[str, object]]) -> int:
 
             clean_complaints.append({"date_created": normalized_date, "body": body.strip()})
 
-        genai_client = genai.Client(
-            enterprise=True,
-            project="recht-technisch",
-            location=LOCATION,
-        )
-
+        logger.info("ingest_data: embedding %d complaints via Gemini", len(clean_complaints))
         for complaint in clean_complaints:
-            response = _embed_with_backoff(genai_client, complaint["body"])
+            response = _embed_with_backoff(complaint["body"])
             if len(response.embeddings) != 1:
                 raise ValueError(
                     "Expected exactly one embedding per complaint, "
@@ -145,11 +140,13 @@ def ingest_data(raw_complaints: Sequence[Mapping[str, object]]) -> int:
 
         # Firestore transactions support at most 500 writes.
         for start in range(0, len(clean_complaints), 400):
+            batch_end = min(start + 400, len(clean_complaints))
+            logger.info("ingest_data: writing batch %d-%d to Firestore", start + 1, batch_end)
             write_complaints(db.transaction(), clean_complaints[start:start + 400])
+        logger.info("ingest_data: complete -- inserted %d complaints", len(clean_complaints))
         return len(clean_complaints)
     finally:
-        if genai_client is not None:
-            genai_client.close()
+        pass
 
 if __name__ == "__main__":
     print("ingest_data() now accepts a list of complaint dictionaries.")

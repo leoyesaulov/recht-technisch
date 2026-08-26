@@ -1,3 +1,4 @@
+import logging
 import time
 import csv
 import io
@@ -13,6 +14,8 @@ from data_ingestion import ingest_data
 from get_cluster_complaints import get_cluster_complaints
 from cluster import run_pipeline, needs_reclustering
 from retention import purge_expired_complaints
+
+logger = logging.getLogger(__name__)
 
 _clusters_cache: dict = {"data": None}
 
@@ -37,6 +40,7 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
+
 
 
 @app.get("/")
@@ -105,8 +109,7 @@ async def ingestion(file: UploadFile | None = File(None)):
     except ValueError as exc:
         return JSONResponse(status_code=400, content={"error": str(exc)})
     except Exception as exc:
-        import traceback
-        print(f"ERROR ingestion: {exc}\n{traceback.format_exc()}")
+        logger.exception("ingestion failed")
         raise HTTPException(status_code=500, detail="Something went wrong.") from exc
 
     _invalidate_all_caches()
@@ -137,8 +140,7 @@ def descriptive_stats_monthly_volume():
     try:
         result = build_monthly_volume()
     except Exception as exc:
-        import traceback
-        print(f"ERROR descriptive_stats_monthly_volume: {exc}\n{traceback.format_exc()}")
+        logger.exception("descriptive_stats_monthly_volume failed")
         raise HTTPException(status_code=500, detail={"error": "Something went wrong."})
     _monthly_cache["data"] = result
     _monthly_cache["expires_at"] = now + _CACHE_TTL
@@ -169,8 +171,7 @@ def descriptive_stats_charts():
     try:
         result = build_charts_stats()
     except Exception as exc:
-        import traceback
-        print(f"ERROR descriptive_stats_charts: {exc}\n{traceback.format_exc()}")
+        logger.exception("descriptive_stats_charts failed")
         raise HTTPException(status_code=500, detail={"error": "Something went wrong."})
     _charts_cache["data"] = result
     _charts_cache["expires_at"] = now + _CACHE_TTL
@@ -188,6 +189,8 @@ def clusters():
     try:
         if needs_reclustering():
             run_pipeline()
+        else:
+            logger.info("clusters: no new complaints since last run, skipping pipeline")
         cluster_docs = db.collection("clusters").stream()
         result = [
             ClusterResponse(
@@ -199,8 +202,7 @@ def clusters():
             for cluster in cluster_docs
         ]
     except Exception as exc:
-        import traceback
-        print(f"ERROR clusters: {exc}\n{traceback.format_exc()}")
+        logger.exception("clusters failed")
         raise HTTPException(status_code=500, detail={"error": "Something went wrong."})
 
     _clusters_cache["data"] = result
@@ -218,8 +220,7 @@ def cluster_complaints(cluster_id: int):
     try:
         return get_cluster_complaints(cluster_id)
     except Exception as exc:
-        import traceback
-        print(f"ERROR cluster_complaints({cluster_id}): {exc}\n{traceback.format_exc()}")
+        logger.exception("cluster_complaints(%d) failed", cluster_id)
         raise HTTPException(status_code=500, detail={"error": "Something went wrong."})
 
 
@@ -250,8 +251,7 @@ def recommendations():
     try:
         result = build_recommendations()
     except Exception as exc:
-        import traceback
-        print(f"ERROR recommendations: {exc}\n{traceback.format_exc()}")
+        logger.exception("recommendations failed")
         raise HTTPException(status_code=500, detail={"error": "Something went wrong."})
     _reco_cache["recs"] = result
     _reco_cache["expires_at"] = now + _RECO_TTL

@@ -1,7 +1,42 @@
+import json
+import logging
+import sys
+
 from google import genai
 from typing import Literal
 from pydantic import BaseModel
 from google.cloud import firestore
+
+
+class CloudRunFormatter(logging.Formatter):
+    _SEVERITY = {"DEBUG": "DEBUG", "INFO": "INFO", "WARNING": "WARNING",
+                 "ERROR": "ERROR", "CRITICAL": "CRITICAL"}
+
+    def format(self, record):
+        payload = {
+            "severity": self._SEVERITY.get(record.levelname, "DEFAULT"),
+            "message": super().format(record),
+            "time": self.formatTime(record, "%Y-%m-%dT%H:%M:%S") + "Z",
+        }
+        if record.exc_info:
+            payload["exception"] = self.formatException(record.exc_info)
+        return json.dumps(payload, ensure_ascii=False)
+
+
+def setup_logging(level=logging.INFO):
+    root = logging.getLogger()
+    if root.handlers:
+        return
+    h = logging.StreamHandler(sys.stdout)
+    h.setFormatter(CloudRunFormatter())
+    root.addHandler(h)
+    root.setLevel(level)
+    logging.getLogger("google").setLevel(logging.WARNING)
+    logging.getLogger("urllib3").setLevel(logging.WARNING)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+
+
+setup_logging()
 
 db = firestore.Client(project="recht-technisch", database="complaints")
 genai_client = genai.Client(vertexai=True, project="recht-technisch", location="europe-west1")

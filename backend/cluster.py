@@ -18,6 +18,7 @@ Use :func:`cluster_complaints` to calculate labels and :func:`compile_semantic_a
 to add the generated title, body, and coherentness fields.
 """
 import json
+import logging
 import random
 import time
 from math import ceil
@@ -31,6 +32,8 @@ from sklearn.cluster import HDBSCAN
 
 from shared import db
 from anonymize import anonymize, sanitize_for_prompt
+
+logger = logging.getLogger(__name__)
 
 LOCATION = "europe-west1"
 SEMANTIC_AVERAGE_MAX_ATTEMPTS = 5
@@ -78,12 +81,14 @@ def needs_reclustering() -> bool:
 
 def run_pipeline() -> None:
     """Run the full clustering pipeline and record the high-water mark."""
+    logger.info("run_pipeline: starting clustering pipeline")
     cluster_complaints()
     compile_semantic_averages()
     db.collection("metadata").document("clustering").set(
         {"last_clustered_max_id": _get_max_complaint_id()},
         merge=True,
     )
+    logger.info("run_pipeline: pipeline complete")
 
 
 def cluster_complaints(min_samples: int = 3, min_cluster_size: int = 10) -> None:
@@ -98,9 +103,8 @@ def cluster_complaints(min_samples: int = 3, min_cluster_size: int = 10) -> None
     batch.commit()
 
     embeddings = [document.get("embedding") for document in documents]
-    print("Started cluster inference")
+    logger.info("cluster_complaints: fetched %d embeddings; running HDBSCAN", len(documents))
     results = HDBSCAN(min_samples=min_samples, min_cluster_size=min_cluster_size).fit(embeddings)
-    print("Finished cluster inference")
     labels = [int(label) for label in results.labels_]
 
     for document, label, probability in zip(documents, labels, results.probabilities_, strict=True):
@@ -111,6 +115,7 @@ def cluster_complaints(min_samples: int = 3, min_cluster_size: int = 10) -> None
         if label >= 0:
             cluster_sizes[label] = cluster_sizes.get(label, 0) + 1
 
+    logger.info("cluster_complaints: HDBSCAN complete -- %d clusters, %d noise points", len(cluster_sizes), labels.count(-1))
     for label, count in cluster_sizes.items():
         db.collection("clusters").document(f"cluster_{label}").set({"cluster_label": label, "cluster_size": count})
 
@@ -150,7 +155,7 @@ def _generate_cluster_summary(client: genai.Client, system_instruction: str, con
             if attempt == SEMANTIC_AVERAGE_MAX_ATTEMPTS - 1:
                 break
             delay = random.uniform(0, 2 ** attempt)
-            print(f"Cluster {label} summary failed ({exc} - {type(exc).__name__}); retrying in {delay:.1f}s (attempt {attempt + 1}/{SEMANTIC_AVERAGE_MAX_ATTEMPTS})")
+            logger.warning("cluster %d summary attempt %d/%d failed (%s); retrying in %.1f s", label, attempt + 1, SEMANTIC_AVERAGE_MAX_ATTEMPTS, exc, delay)
             time.sleep(delay)
 
     raise RuntimeError(f"Failed to compile valid summary for cluster {label} after {SEMANTIC_AVERAGE_MAX_ATTEMPTS} attempts") from last_error
@@ -163,11 +168,12 @@ def compile_semantic_averages() -> None:
         clusters = db.collection("clusters")
         complaints = db.collection("complaints")
         genai_client = genai.Client(enterprise=True, project="recht-technisch", location=LOCATION)
+        logger.info("compile_semantic_averages: generating summaries")
         for cluster_document in clusters.stream():
             label = cluster_document.to_dict()["cluster_label"]
-            print(f"Compiling average for id - {label}")
             cluster_complaints = list(complaints.where(filter=FieldFilter("cluster_label", "==", label)).stream())
             sample_size = min(10, max(3, ceil(len(cluster_complaints) * 0.3)))
+            logger.info("compile_semantic_averages: cluster %d -- %d/%d complaints sampled", label, sample_size, len(cluster_complaints))
             sample = random.sample(cluster_complaints, sample_size)
             complaint_text = ("\n" + "=" * 30 + "\n").join(
                 sanitize_for_prompt(anonymize("", document.to_dict().get('body', '').strip())[1][:500])
@@ -193,10 +199,9 @@ Complaints begin:
 {complaint_text}
 ---
 Complaints end.'''
-            print("\tRunning the model")
             summary = _generate_cluster_summary(genai_client, system_instruction, contents, label)
             clusters.document(cluster_document.id).update({"cluster_title": summary.title, "cluster_body": summary.body, "cluster_coherentness": summary.coherentness})
-            print("\tSuccessfully finished model task.")
+            logger.info("compile_semantic_averages: cluster %d -- summary written (coherentness=%.2f)", label, summary.coherentness)
     finally:
         if genai_client is not None:
             genai_client.close()
