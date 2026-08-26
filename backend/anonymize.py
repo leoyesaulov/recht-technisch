@@ -156,3 +156,36 @@ def anonymize(title: str, body: str) -> tuple[str, str]:
     anon_title = _apply_entities(title, _find_spans(title), entity_map, counts)
     anon_body  = _apply_entities(body,  _find_spans(body),  entity_map, counts)
     return anon_title, anon_body
+
+
+# ── Prompt-injection sanitizer ────────────────────────────────────────────────
+
+_INJECTION_PATTERNS: list[re.Pattern] = [
+    # "ignore/disregard/forget/override … instructions/rules/system/…"
+    re.compile(
+        r'\b(ignore|disregard|forget|override)\b.{0,60}'
+        r'(instructions?|rules?|system|constraints?|everything)',
+        re.I | re.S,
+    ),
+    # "you are now …"
+    re.compile(r'\byou\s+are\s+now\b', re.I),
+    # "act as a/an …"
+    re.compile(r'\bact\s+as\s+(?:a\s+|an\s+)?\w', re.I),
+    # "new task / new role / new instructions"
+    re.compile(r'\bnew\s+(?:task|role|objective|instructions?)\b', re.I),
+    # "system:", "assistant:", "instruction:", "command:"
+    re.compile(r'\b(?:system|assistant|instruction|command)\s*:', re.I),
+    # XML-style system tags
+    re.compile(r'<\s*/?\s*system\s*>', re.I),
+    # Chat-template markers
+    re.compile(r'\[/?INST\]|\[SYSTEM\]|<\|system\|>', re.I),
+]
+
+_REDACTED = '[INHALT ENTFERNT]'
+
+
+def sanitize_for_prompt(text: str) -> str:
+    """Neutralize prompt-injection patterns before embedding text in an LLM prompt."""
+    for pat in _INJECTION_PATTERNS:
+        text = pat.sub(_REDACTED, text)
+    return text
